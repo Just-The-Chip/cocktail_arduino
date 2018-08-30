@@ -8,14 +8,14 @@ IOtimer::IOtimer(int pin, char jar)
 
     pinMode(IO, OUTPUT);
     // Initialize each valve IO High to set all relays Low.
-    digitalWrite(IO,HIGH); 
+    digitalWrite(IO,dState); 
 }
 
 void IOtimer::Update() {
     if (dState == HIGH && now >= dTimeSet + dOnTime) {
         // IF jar is on and onTime has elapsed, turn jar and pump off.
-        digitalWrite(IO, HIGH);
         dState = LOW;
+        digitalWrite(IO, dState);
     }
 
     if (lState == HIGH && now >= lTimeSet + lOnTime) {
@@ -31,7 +31,7 @@ void IOtimer::Set(int microseconds) { // Sets jar to on and sets jar timer
 
     pSet(microseconds); // Turns on the pump for the same length of time as the
                         // valve
-    digitalWrite(IO, LOW);
+    digitalWrite(IO, dState);
 
     SetLight(microseconds); // TODO: check if it works????
 }

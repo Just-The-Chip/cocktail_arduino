@@ -31,7 +31,7 @@ unsigned long ptimeSet = 0; // mS time that pump was set to on
 unsigned long ponTime = 0;  // mS time for pump to stay on
 bool pstate = LOW;          // Is HIGH when pump is active
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(2, LIGHTPIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(42, LIGHTPIN, NEO_GRB + NEO_KHZ800);
 uint32_t colors[6];
 
 // SETUP---------------------------------------------------------------------------------------
@@ -73,7 +73,9 @@ void setupJars() {
 
 void receiveData(int byteCount) {
     // Number of bytes being sent by master
+    Serial.println("receiving data?");
     int len = Wire.read();
+    Serial.println(len);
 
     // For number of bytes sent, load buf with each byte
     for (int i = 0; i < len; i++) { 
@@ -81,6 +83,7 @@ void receiveData(int byteCount) {
     }
     // This adds the string termination character to buf
     buf[len] = '\0';
+    Serial.println(buf);
 }
 
 // LOOP-----------------------------------------------------------------------------------
@@ -99,35 +102,40 @@ void loop() {
     pUpdate(); 
 
     // commit LED updates made by jars
-    strip.show();
+    //strip.show();
 }
 
 void checkbuf() {
     // This pointer is used by the strtok commands below
     char *point = strtok(buf, ":"); 
-    //  Serial.print("Buffer: ");
-    //  Serial.println(buf);
+
+    //get remainder of string
+    char *params = strtok(NULL, "\0");
     if (strcmp(point, "pump") == 0) {
-        doPumpCmd();
+        doPumpCmd(params);
     } else if (strcmp(point, "show") == 0) {
-        doShowCmd();
+        doShowCmd(params);
     }
 
     // Clears 'buf' by placing termination character at index 0
     buf[0] = '\0';
 }
 
-void doPumpCmd() {
-    // This pointer is used by the strtok commands below
-    char *point = strtok(buf, ":"); 
+void doPumpCmd(char *params) {
+    Serial.println(buf);
+    // // This pointer is used by the strtok commands below
+    // char *point = strtok(buf, ":"); 
+    Serial.println(params);
 
-    point = strtok(NULL, ":");
+    char *point = strtok(params, ":");
     int jarNum = atoi(point);
 
     point = strtok(NULL, ":");
     int mS = atoi(point);
 
+    Serial.print("Jar num: ");
     Serial.println(jarNum);
+    Serial.print("ms: ");
     Serial.println(mS);
 
     if (jarNum > 0 && jarNum <= 21) {
@@ -137,18 +145,15 @@ void doPumpCmd() {
     }
 }
 
-void doShowCmd() {
+void doShowCmd(char *params) {
     Serial.println("BEGIN show:");
     // turn off all jar lights that are currently on
     for (int i = 0; i < 21; i++) {
         (jars[i])->UnsetLight();
     }
 
-    // This pointer is used by the strtok commands below
-    char *point = strtok(buf, ":");
-
     //iterate through comma separated list of jars
-    point = strtok(NULL, ",");
+    char *point = strtok(params, ",");
 
     while (point != NULL) {
         Serial.print(point);
