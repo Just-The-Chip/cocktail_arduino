@@ -1,7 +1,7 @@
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_DotStar.h>
 
 extern unsigned long now;
-extern Adafruit_NeoPixel strip;
+extern Adafruit_DotStar strip;
 extern uint32_t colors[6];
 
 extern void pSet(int microseconds);

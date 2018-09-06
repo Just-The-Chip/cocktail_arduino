@@ -11,10 +11,11 @@
 
 #include "IOtimer.h"
 #include "common.h"
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_DotStar.h>
 #include <Wire.h>
 
-#define LIGHTPIN 12
+// #define LIGHTDATA 12
+// #define LIGHTCLOCK 11
 
 #define SLAVE_ADDRESS 0x04
 
@@ -31,7 +32,7 @@ unsigned long ptimeSet = 0; // mS time that pump was set to on
 unsigned long ponTime = 0;  // mS time for pump to stay on
 bool pstate = LOW;          // Is HIGH when pump is active
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(42, LIGHTPIN, NEO_GRB + NEO_KHZ800);
+Adafruit_DotStar strip = Adafruit_DotStar(42, DOTSTAR_BRG);
 uint32_t colors[6];
 
 // SETUP---------------------------------------------------------------------------------------
@@ -102,7 +103,7 @@ void loop() {
     pUpdate(); 
 
     // commit LED updates made by jars
-    //strip.show();
+    strip.show();
 }
 
 void checkbuf() {
