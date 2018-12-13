@@ -20,6 +20,29 @@
 #define SLAVE_ADDRESS 0x04
 
 IOtimer *jars[21];
+int colorIndicies[21] = {
+    0,  //0
+    6,  //1
+    12, //2
+    17, //3
+    19, //4
+    24, //5
+    30, //6
+    35, //7
+    37, //8
+    42, //9
+    48, //10
+    53, //11
+    55, //12
+    60, //13
+    66, //14
+    71, //15
+    73, //16
+    77, //17
+    81, //18
+    86, //19
+    89  //20
+};
 
 // Globals:
 char buf[33]; // 32 byte serial buffer + termination character
@@ -28,11 +51,11 @@ char pumc = 40;
 
 // Variables for pump operation
 int pIO = 43;               // pin of pump
-unsigned long ptimeSet = 0; // mS time that pump was set to on
-unsigned long ponTime = 0;  // mS time for pump to stay on
+long ptimeSet = 0; // mS time that pump was set to on
+long ponTime = 0;  // mS time for pump to stay on
 bool pstate = LOW;          // Is HIGH when pump is active
 
-Adafruit_DotStar strip = Adafruit_DotStar(42, DOTSTAR_BRG);
+Adafruit_DotStar strip = Adafruit_DotStar(90, DOTSTAR_BRG);
 uint32_t colors[6];
 
 // SETUP---------------------------------------------------------------------------------------
@@ -67,7 +90,7 @@ void setupJars() {
     IOtimer *jarPointer;
     int startPin = 22;
     for (int i = 0; i < 21; i++) {
-        jarPointer = new IOtimer(startPin + i, char(i));
+        jarPointer = new IOtimer(startPin + i, colorIndicies[i], char(i));
         jars[i] = jarPointer;
     }
 }
@@ -79,7 +102,7 @@ void receiveData(int byteCount) {
     Serial.println(len);
 
     // For number of bytes sent, load buf with each byte
-    for (int i = 0; i < len; i++) { 
+    for (int i = 0; i < len; i++) {
         buf[i] = Wire.read();
     }
     // This adds the string termination character to buf
@@ -92,7 +115,7 @@ void loop() {
     // Check buffer for commands, and execute if there are any.
     checkbuf();
 
-    now = millis(); 
+    now = millis();
 
     // Update all jars to see if the valve or lights need to be turned off
     for (int i = 0; i < 21; i++) {
@@ -100,7 +123,7 @@ void loop() {
     }
 
     // Update to see if pump needs to be turned off
-    pUpdate(); 
+    pUpdate();
 
     // commit LED updates made by jars
     strip.show();
@@ -108,7 +131,7 @@ void loop() {
 
 void checkbuf() {
     // This pointer is used by the strtok commands below
-    char *point = strtok(buf, ":"); 
+    char *point = strtok(buf, ":");
 
     //get remainder of string
     char *params = strtok(NULL, "\0");
@@ -125,14 +148,14 @@ void checkbuf() {
 void doPumpCmd(char *params) {
     Serial.println(buf);
     // // This pointer is used by the strtok commands below
-    // char *point = strtok(buf, ":"); 
+    // char *point = strtok(buf, ":");
     Serial.println(params);
 
     char *point = strtok(params, ":");
     int jarNum = atoi(point);
 
     point = strtok(NULL, ":");
-    int mS = atoi(point);
+    long int mS = strtol(point,NULL,10);
 
     Serial.print("Jar num: ");
     Serial.println(jarNum);
@@ -184,10 +207,10 @@ void pUpdate() {
 }
 
 // This Set routine is specifically for the pump
-void pSet(int microseconds) {
+void pSet(long microseconds) {
 
     ptimeSet = millis();
-    ponTime = microseconds;
+    ponTime = microseconds; //actually miliseconds?
     pstate = HIGH;
 
     digitalWrite(pIO, HIGH);
