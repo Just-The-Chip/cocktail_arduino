@@ -29,7 +29,7 @@ void IOtimer::Set(long microseconds) { // Sets jar to on and sets jar timer
     dOnTime = microseconds; //actually miliseconds????????
     dState = HIGH;
 
-    pSet(microseconds); // Turns on the pump for the same length of time as the
+    pSet(microseconds + 8); // Turns on the pump for the same length of time as the
                         // valve
     digitalWrite(IO, dState);
 
