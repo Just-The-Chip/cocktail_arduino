@@ -14,9 +14,9 @@ class IOtimer {
     void updateLightState(bool state);
 
   public:
-    IOtimer(int pin, int ledIndex, char jar);
+    IOtimer(int loadDataPin, int loadClockPin, int jarPin, int ledIndex, char jar);
     void Update();
-    void Set(long microseconds); //actually miliseconds?
+    void SetPump(long microseconds); //actually miliseconds?
     void SetLight(long microseconds); //I'll figure it out later.
     void UnsetLight();
 };
