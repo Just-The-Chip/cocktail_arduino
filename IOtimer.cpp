@@ -2,10 +2,10 @@
 #include "common.h"
 #include <Arduino.h>
 
-IOtimer::IOtimer(int pin, int ledIndex, char jar)
+IOtimer::IOtimer(int loadDataPin, int loadClockPin, int jarPin, int ledIndex, char jar)
     : IO(pin), jarNum(jar), ledIndex(ledIndex), dTimeSet(0), dOnTime(0), dState(LOW), lTimeSet(0),
       lOnTime(0), lState(LOW) {
-
+    
     pinMode(IO, OUTPUT);
     // Initialize each valve IO High to set all relays Low.
     digitalWrite(IO,dState);
@@ -23,7 +23,7 @@ void IOtimer::Update() {
     }
 }
 
-void IOtimer::Set(long microseconds) { // Sets jar to on and sets jar timer
+void IOtimer::SetPump(long microseconds) { // Sets jar to on and sets jar timer
 
     dTimeSet = millis();
     dOnTime = microseconds; //actually miliseconds????????

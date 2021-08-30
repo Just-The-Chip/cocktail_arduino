@@ -13,11 +13,18 @@
 #include "common.h"
 #include <Adafruit_DotStar.h>
 #include <Wire.h>
+#include <CRC.h>
+#include <HX711.h>
 
 // #define LIGHTDATA 12
 // #define LIGHTCLOCK 11
 
 #define SLAVE_ADDRESS 0x04
+
+// Load cell stuff
+HX711 scale;
+uint8_t scaleDataPin = 6;
+uint8_t scaleClockPin = 7;
 
 IOtimer *jars[21];
 int colorIndicies[21] = {
@@ -49,15 +56,23 @@ int colorIndicies[21] = {
 };
 
 // Globals:
-char buf[33]; // 32 byte serial buffer + termination character
+const int maxBuf = 32;  // Size of serial buffer
+char buf[maxBuf + 1]; // 32 byte serial buffer + termination character
 unsigned long now = millis();
-char pumc = 40;
+// char pumc = 40; <-- Not used?
+unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
+bool checkBuf = false;
 
 // Variables for pump operation
 int pIO = 43;               // pin of pump
 long ptimeSet = 0; // mS time that pump was set to on
 long ponTime = 0;  // mS time for pump to stay on
 bool pstate = LOW;          // Is HIGH when pump is active
+
+enum command: char{
+    pump = 'p',
+    show = 's'
+}
 
 Adafruit_DotStar strip = Adafruit_DotStar(90, DOTSTAR_BRG);
 uint32_t colors[6];
@@ -76,6 +91,7 @@ void setup() {
 
     setupStrip();
     setupJars();
+    scale.begin(scaleDataPin, scaleClockPin);
 }
 
 void setupStrip() {
@@ -93,32 +109,57 @@ void setupStrip() {
 void setupJars() {
     IOtimer *jarPointer;
     int startPin = 22;
+    // TODO: Load scale calibration
     for (int i = 0; i < 21; i++) {
-        jarPointer = new IOtimer(startPin + i, colorIndicies[i], char(i));
+        jarPointer = new IOtimer(dataPin, clockPin, startPin + i, colorIndicies[i], char(i));
         jars[i] = jarPointer;
     }
 }
 
 void receiveData(int byteCount) {
+    static int packetLen = 0;
+    static int bufIndex = 0;
+    
     // Number of bytes being sent by master
-    Serial.println("receiving data?");
-    int len = Wire.read();
-    Serial.println(len);
+    Serial.print("bytes incomming: ");
+    Serial.println(byteCount);
 
-    // For number of bytes sent, load buf with each byte
-    for (int i = 0; i < len; i++) {
-        buf[i] = Wire.read();
+    // If reading first byte of packet
+    if (packetLen == 0) {
+        packetLen = Wire.read();
+        // If packet length is unreasonable
+        if (packetLen > maxBuf) {
+            packetLen = 0;
+            nack();
+            return;
+        }
+    } else {
+        while (Wire.available()) {
+            buf[bufIndex] = Wire.read();
+            bufIndex++;
+        }
     }
-    // This adds the string termination character to buf
-    buf[len] = '\0';
-    Serial.println(buf);
+    
+    // If all bytes of packet were recieved
+    if (bufIndex >= (packetLen - 1)) {
+        // This adds the string termination character to buf
+        buf[packetLen] = '\0';
+        packetLen = 0;
+        bufIndex = 0;
+        Serial.println(buf);
+        checkBuf = true;
+    }
+
+    return;
 }
 
 // LOOP-----------------------------------------------------------------------------------
 void loop() {
     // Check buffer for commands, and execute if there are any.
-    checkbuf();
-
+    if (checkBuf) {
+        checkBuf = false;
+        parseBuf();
+    }
     now = millis();
 
     // Update all jars to see if the valve or lights need to be turned off
@@ -133,73 +174,148 @@ void loop() {
     strip.show();
 }
 
-void checkbuf() {
-    // This pointer is used by the strtok commands below
-    char *point = strtok(buf, ":");
+// void checkbuf() {
+//     // This pointer is used by the strtok commands below
+//     char *point = strtok(buf, ":");
 
-    //get remainder of string
-    char *params = strtok(NULL, "\0");
-    if (strcmp(point, "pump") == 0) {
-        doPumpCmd(params);
-    } else if (strcmp(point, "show") == 0) {
-        doShowCmd(params);
+//     //get remainder of string
+//     char *params = strtok(NULL, "\0");
+//     if (strcmp(point, "pump") == 0) {
+//         doPumpCmd(params);
+//     } else if (strcmp(point, "show") == 0) {
+//         doShowCmd(params);
+//     }
+
+//     // Clears 'buf' by placing termination character at index 0
+//     buf[0] = '\0';
+// }
+
+// Parse single packet out of buf
+void parseBuf() {
+    static int parsedBufIndex = 0;
+    static int numIndeces = 0;
+
+    bool crcGood = checkCRC();
+    if (!crcGood) {
+        nack();
+        return;
     }
 
-    // Clears 'buf' by placing termination character at index 0
-    buf[0] = '\0';
-}
-
-void doPumpCmd(char *params) {
-    Serial.println(buf);
-    // // This pointer is used by the strtok commands below
-    // char *point = strtok(buf, ":");
-    Serial.println(params);
-
-    char *point = strtok(params, ":");
-    int jarNum = atoi(point);
-
-    point = strtok(NULL, ":");
-    long int mS = strtol(point,NULL,10);
-
-    Serial.print("Jar num: ");
-    Serial.println(jarNum);
-    Serial.print("ms: ");
-    Serial.println(mS);
-
-    if (jarNum > 0 && jarNum <= 21) {
-        (jars[jarNum - 1])->Set(mS);
+    // If parsing command
+    if (parsedBufIndex == 0) {
+        numIndeces = buf[1];
+        parsedBuf[parsedBufIndex][0] = buf[0];
+        parsedBuf[parsedBufIndex][1] = buf[1];
     } else {
-        Serial.println("Unhandled jar# selected for pump");
+        parsedBuf[parsedBufIndex][0] = buf[0];
+        parsedBufIndex[parsedBufIndex][1] = 0;
+        for (int i=1; i<5; i++) {
+            parsedBufIndex[parsedBufIndex][1] |= buf[i];
+            parsedBufIndex[parsedBufIndex][1] = parsedBufIndex[parsedBufIndex][1] << 8;
+        }
+    }
+
+
+    buf[0] = "\0";
+    ack();
+
+    // If full transmission has been parsed
+    if (parsedBufIndex >= numIndeces) {
+        command = parsedBuf[0][0];
+        switch (command) {
+            case pump:
+                doPumpCmd();
+                break;
+            case show:
+                doShowCmd();
+                break;
+            default:
+                Serial.println("Bad command");
+        }
+        parsedBufIndex = 0;
+        numIndeces = 0;
     }
 }
 
-void doShowCmd(char *params) {
-    Serial.println("BEGIN show:");
-    // turn off all jar lights that are currently on
-    for (int i = 0; i < 21; i++) {
-        (jars[i])->UnsetLight();
-    }
+// void doPumpCmd(char *params) {
+//     Serial.println(buf);
+//     // // This pointer is used by the strtok commands below
+//     // char *point = strtok(buf, ":");
+//     Serial.println(params);
 
-    //iterate through comma separated list of jars
-    char *point = strtok(params, ",");
+//     char *point = strtok(params, ":");
+//     int jarNum = atoi(point);
 
-    while (point != NULL) {
-        Serial.print(point);
-        Serial.print(", ");
+//     point = strtok(NULL, ":");
+//     long int mS = strtol(point,NULL,10);
 
-        int jarNum = atoi(point);
+//     Serial.print("Jar num: ");
+//     Serial.println(jarNum);
+//     Serial.print("ms: ");
+//     Serial.println(mS);
 
-        if (jarNum > 0 && jarNum <= 21) {
-            // light it up for 30s
-            (jars[jarNum - 1])->SetLight(30 * 1000);
-        } else {
-            Serial.println("Unhandled jar# selected for show");
+//     if (jarNum > 0 && jarNum <= 21) {
+//         (jars[jarNum - 1])->Set(mS);
+//     } else {
+//         Serial.println("Unhandled jar# selected for pump");
+//     }
+// }
+
+void doPumpCmd(int numIngredients) {
+    // LEFT OFF hERE
+    allLightsOff();
+    digitalWrite(pIO, true); // turns on pump
+    
+    // For number of Ingredients
+    for (int i = 1; i < numIngredients; i++) {
+        IOtimer[parsedBuf[i][0]] <- SetLight();  // TODO: fix setlight to only turn on light
+        scale.tare(5);
+        unsigned long startPump = millis();
+
+        unsigned long ingredientWeight = parsedBuf[i][1];
+        while (scale.get_units(2) <= ingredientWeight) {
+            if (millis() >= startPump + 120000) {
+                break;
+            }
         }
-
-        point = strtok(NULL, ",");
+        IOtimer[parsedBuf[i][0]] <- UnsetLight();
     }
 
-    Serial.println("\nEND show");
+    digitalWrite(pIO, false);
+}
+
+// void your mom
+// void doShowCmd(char *params) {
+//     Serial.println("BEGIN show:");
+//     // turn off all jar lights that are currently on
+//     for (int i = 0; i < 21; i++) {
+//         (jars[i])->UnsetLight();
+//     }
+
+//     //iterate through comma separated list of jars
+//     char *point = strtok(params, ",");
+
+//     while (point != NULL) {
+//         Serial.print(point);
+//         Serial.print(", ");
+
+//         int jarNum = atoi(point);
+
+//         if (jarNum > 0 && jarNum <= 21) {
+//             // light it up for 30s
+//             (jars[jarNum - 1])->SetLight(30 * 1000);
+//         } else {
+//             Serial.println("Unhandled jar# selected for show");
+//         }
+
+//         point = strtok(NULL, ",");
+//     }
+
+//     Serial.println("\nEND show");
+// }
+
+void doShowCmd() {
+    return;
 }
 
 // This update routine is specifically for the pump
@@ -219,4 +335,29 @@ void pSet(long microseconds) {
 
     digitalWrite(pIO, HIGH);
     Serial.print("pSet works");
+}
+
+bool checkCRC() {
+    int recievedCRC = buf[2];
+    int calculatedCRC = crc16_CCITT((uint8_t *) buf, (strlen(buf) - 2));  // generate CRC of buf, excluding recieved CRC
+    recievedCRC = recievedCRC << 8;
+    recievedCRC |= buf[3];
+
+    return calculatedCRC == recievedCRC;
+}
+
+void nack() {
+    // TODO: implement nack
+    Wire.flush();
+    return;
+}
+
+void ack() {
+    // TODO: implement ack
+    return;
+}
+
+void allLightsOff() {
+    // TODO: Implement all lights off
+    return;
 }
