@@ -15,6 +15,7 @@
 #include <Wire.h>
 #include <CRC.h>
 #include <HX711.h>
+#include <EEPROM.h>
 
 // #define LIGHTDATA 12
 // #define LIGHTCLOCK 11
@@ -62,6 +63,7 @@ unsigned long now = millis();
 // char pumc = 40; <-- Not used?
 unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
 bool checkBuf = false;
+int eepromAddress = 0;
 
 // Variables for pump operation
 int pIO = 43;               // pin of pump
@@ -72,7 +74,7 @@ bool pstate = LOW;          // Is HIGH when pump is active
 enum command: char{
     pump = 'p',
     show = 's'
-}
+};
 
 Adafruit_DotStar strip = Adafruit_DotStar(90, DOTSTAR_BRG);
 uint32_t colors[6];
@@ -91,7 +93,7 @@ void setup() {
 
     setupStrip();
     setupJars();
-    scale.begin(scaleDataPin, scaleClockPin);
+    setupScale();
 }
 
 void setupStrip() {
@@ -111,9 +113,18 @@ void setupJars() {
     int startPin = 22;
     // TODO: Load scale calibration
     for (int i = 0; i < 21; i++) {
-        jarPointer = new IOtimer(dataPin, clockPin, startPin + i, colorIndicies[i], char(i));
+        jarPointer = new IOtimer(startPin + i, colorIndicies[i], char(i));
         jars[i] = jarPointer;
     }
+}
+
+void setupScale() {
+    float calValue;
+    
+    scale.begin(scaleDataPin, scaleClockPin);
+    while (!scale.is_ready());
+    EEPROM.get(eepromAddress, calValue);
+    scale.set_scale(calValue);
 }
 
 void receiveData(int byteCount) {
@@ -160,18 +171,18 @@ void loop() {
         checkBuf = false;
         parseBuf();
     }
-    now = millis();
+    // now = millis();
 
     // Update all jars to see if the valve or lights need to be turned off
-    for (int i = 0; i < 21; i++) {
-        (jars[i])->Update();
-    }
+    // for (int i = 0; i < 21; i++) {
+    //     (jars[i])->Update();
+    // }
 
     // Update to see if pump needs to be turned off
-    pUpdate();
+    // pUpdate();
 
     // commit LED updates made by jars
-    strip.show();
+    // strip.show();
 }
 
 // void checkbuf() {
@@ -201,17 +212,17 @@ void parseBuf() {
         return;
     }
 
-    // If parsing command
+    // If parsing command (index 0), else if parsing ingredient/jar position
     if (parsedBufIndex == 0) {
         numIndeces = buf[1];
         parsedBuf[parsedBufIndex][0] = buf[0];
         parsedBuf[parsedBufIndex][1] = buf[1];
     } else {
         parsedBuf[parsedBufIndex][0] = buf[0];
-        parsedBufIndex[parsedBufIndex][1] = 0;
+        parsedBuf[parsedBufIndex][1] = 0;
         for (int i=1; i<5; i++) {
-            parsedBufIndex[parsedBufIndex][1] |= buf[i];
-            parsedBufIndex[parsedBufIndex][1] = parsedBufIndex[parsedBufIndex][1] << 8;
+            parsedBuf[parsedBufIndex][1] |= buf[i];
+            parsedBuf[parsedBufIndex][1] = parsedBuf[parsedBufIndex][1] << 8;
         }
     }
 
@@ -221,13 +232,13 @@ void parseBuf() {
 
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
-        command = parsedBuf[0][0];
-        switch (command) {
+        command recievedCommand = parsedBuf[0][0];
+        switch (recievedCommand) {
             case pump:
-                doPumpCmd();
+                doPumpCmd(numIndeces);
                 break;
             case show:
-                doShowCmd();
+                doShowCmd(numIndeces);
                 break;
             default:
                 Serial.println("Bad command");
@@ -262,26 +273,39 @@ void parseBuf() {
 // }
 
 void doPumpCmd(int numIngredients) {
-    // LEFT OFF hERE
-    allLightsOff();
-    digitalWrite(pIO, true); // turns on pump
+    strip.clear();              // turn off all LEDs
+    digitalWrite(pIO, true);    // turns on pump
+    // TODO: Add check to make sure cup is placed
+    scale.tare(5);
     
-    // For number of Ingredients
-    for (int i = 1; i < numIngredients; i++) {
-        IOtimer[parsedBuf[i][0]] <- SetLight();  // TODO: fix setlight to only turn on light
-        scale.tare(5);
-        unsigned long startPump = millis();
-
-        unsigned long ingredientWeight = parsedBuf[i][1];
-        while (scale.get_units(2) <= ingredientWeight) {
-            if (millis() >= startPump + 120000) {
+    // For each Ingredient
+    for (int i = 1; i < numIngredients; i++) {  // i=1 because index 0 contains the command
+        int position = parsedBuf[i][0];
+        float drinkWeight = scale.get_units(5); // Get current weight
+        unsigned long pumpStart = millis();
+        drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
+        
+        jars[position] -> SetLight();
+        jars[position] -> SetValve();
+        // Check scale until target weight is reached or timeout
+        float currentWeight = scale.get_units(1);
+        while (currentWeight <= drinkWeight) {
+            currentWeight = scale.get_units(1);
+            if (millis() >= pumpStart + 120000) {
                 break;
             }
         }
-        IOtimer[parsedBuf[i][0]] <- UnsetLight();
+        jars[position] -> UnsetValve();
+        jars[position] -> UnsetLight();
+
+        unsigned long currentTime = millis();
+        // Give time for drink weight to stabalize before next ingredient
+        while ((millis - currentTime) > 1000) {
+            Serial.println(scale.get_units(1));
+        }
     }
 
-    digitalWrite(pIO, false);
+    digitalWrite(pIO, false); // turn off pump
 }
 
 // void your mom
@@ -314,8 +338,14 @@ void doPumpCmd(int numIngredients) {
 //     Serial.println("\nEND show");
 // }
 
-void doShowCmd() {
-    return;
+void doShowCmd(int numPositions) {
+    strip.clear();              // turn off all LEDs
+    
+    // For each position
+    for (int i = 1; i < numPositions; i++) {  // i=1 because index 0 contains the command
+        int position = parsedBuf[i][0];
+        jars[position] -> SetLight();
+    }
 }
 
 // This update routine is specifically for the pump
@@ -354,10 +384,5 @@ void nack() {
 
 void ack() {
     // TODO: implement ack
-    return;
-}
-
-void allLightsOff() {
-    // TODO: Implement all lights off
     return;
 }

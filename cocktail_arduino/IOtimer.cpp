@@ -2,8 +2,8 @@
 #include "common.h"
 #include <Arduino.h>
 
-IOtimer::IOtimer(int loadDataPin, int loadClockPin, int jarPin, int ledIndex, char jar)
-    : IO(pin), jarNum(jar), ledIndex(ledIndex), dTimeSet(0), dOnTime(0), dState(LOW), lTimeSet(0),
+IOtimer::IOtimer(int jarPin, int ledIndex, char jar)
+    : IO(jarPin), jarNum(jar), ledIndex(ledIndex), dTimeSet(0), dOnTime(0), dState(LOW), lTimeSet(0),
       lOnTime(0), lState(LOW) {
     
     pinMode(IO, OUTPUT);
@@ -23,22 +23,19 @@ void IOtimer::Update() {
     }
 }
 
-void IOtimer::SetPump(long microseconds) { // Sets jar to on and sets jar timer
+// void IOtimer::SetPump() { // Sets jar to on and sets jar timer
+//     pstate = HIGH;
+//     digitalWrite(pIO, HIGH);
+// }
 
-    dTimeSet = millis();
-    dOnTime = microseconds; //actually miliseconds????????
-    dState = HIGH;
+// void IOtimer::UnsetPump() { // Sets jar to on and sets jar timer
+//     pstate = LOW;
+//     digitalWrite(pIO, LOW);
+// }
 
-    pSet(microseconds + 8); // Turns on the pump for the same length of time as the
-                        // valve
-    digitalWrite(IO, dState);
-
-    SetLight(microseconds); // TODO: check if it works????
-}
-
-void IOtimer::SetLight(long microseconds) {
-    lTimeSet = millis();
-    lOnTime = microseconds;
+void IOtimer::SetLight() {
+    // lTimeSet = millis();
+    // lOnTime = microseconds;
     lState = HIGH;
 
     updateLightState(lState);
@@ -54,4 +51,14 @@ void IOtimer::updateLightState(bool state) {
 
     strip.setPixelColor(ledIndex, color);
     strip.setPixelColor(ledIndex + 1, color);
+}
+
+void IOtimer::SetValve() {
+    dState = HIGH;
+    digitalWrite(IO, dState);
+}
+
+void IOtimer::UnsetValve(){
+    dState = LOW;
+    digitalWrite(IO, dState);
 }
