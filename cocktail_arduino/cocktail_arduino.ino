@@ -16,7 +16,7 @@
 #include <CRC.h>
 #include <HX711.h>
 #include <EEPROM.h>
-
+#include <HardwareSerial.h>
 // #define LIGHTDATA 12
 // #define LIGHTCLOCK 11
 
@@ -138,26 +138,40 @@ void receiveData(int byteCount) {
     // If reading first byte of packet
     if (packetLen == 0) {
         packetLen = Wire.read();
+        Serial.print("Packet length: ");
+        Serial.println(packetLen);
         // If packet length is unreasonable
         if (packetLen > maxBuf) {
+            Serial.println("aw heck maxbuff is like too small?");
             packetLen = 0;
             nack();
             return;
         }
-    } else {
-        while (Wire.available()) {
-            buf[bufIndex] = Wire.read();
-            bufIndex++;
-        }
     }
-    
+
+    while (Wire.available()) {
+        buf[bufIndex] = Wire.read();
+        bufIndex++;
+    }
+
+    Serial.print("bufIndex: ");
+    Serial.println(bufIndex);
+    int bufLen = bufIndex;
+
+    Serial.println("Finished reading probably.");
     // If all bytes of packet were recieved
     if (bufIndex >= (packetLen - 1)) {
         // This adds the string termination character to buf
+        Serial.println("about to print buf: ");
         buf[packetLen] = '\0';
         packetLen = 0;
         bufIndex = 0;
-        Serial.println(buf);
+        // Serial.print(buf, HEX);
+        for(int i = 0; i < bufLen; i++) {
+          Serial.print(buf[i], DEC);
+          Serial.print(" ");
+        }
+        Serial.println("   wow cool");
         checkBuf = true;
     }
 
@@ -208,9 +222,14 @@ void parseBuf() {
 
     bool crcGood = checkCRC();
     if (!crcGood) {
+        Serial.println("CRC is NOT GOOD!!!!!!");
+        Serial.println("---");
         nack();
         return;
     }
+
+    Serial.println("CRC is good, I'm happy for you.");
+    Serial.println("---");
 
     // If parsing command (index 0), else if parsing ingredient/jar position
     if (parsedBufIndex == 0) {
@@ -369,9 +388,16 @@ void pSet(long microseconds) {
 
 bool checkCRC() {
     int recievedCRC = buf[2];
-    int calculatedCRC = crc16_CCITT((uint8_t *) buf, (strlen(buf) - 2));  // generate CRC of buf, excluding recieved CRC
+
+    int calculatedCRC = crc16((uint8_t *) buf, (strlen(buf) - 2), 0x1021, 0x0000);
     recievedCRC = recievedCRC << 8;
-    recievedCRC |= buf[3];
+    recievedCRC |= (uint8_t) buf[3];
+
+    Serial.print("recieved crc: ");
+    Serial.println(recievedCRC);
+
+    Serial.print("calculated crc: ");
+    Serial.println(calculatedCRC);
 
     return calculatedCRC == recievedCRC;
 }
