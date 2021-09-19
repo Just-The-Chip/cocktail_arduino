@@ -230,7 +230,6 @@ void parseBuf() {
     }
 
     Serial.println("CRC is good, I'm happy for you.");
-    Serial.println("---");
 
     // If parsing command (index 0), else if parsing ingredient/jar position
     if (parsedBufIndex == 0) {
@@ -246,13 +245,15 @@ void parseBuf() {
         }
     }
 
-
     buf[0] = "\0";
     ack();
 
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
         command recievedCommand = parsedBuf[0][0];
+        Serial.print("received command: ");
+        Serial.println(recievedCommand);
+
         switch (recievedCommand) {
             case pump:
                 doPumpCmd(numIndeces);
@@ -266,6 +267,10 @@ void parseBuf() {
         parsedBufIndex = 0;
         numIndeces = 0;
     }
+
+    parsedBufIndex++;
+
+    Serial.println("-----");
 }
 
 // void doPumpCmd(char *params) {
