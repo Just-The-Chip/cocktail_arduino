@@ -59,6 +59,7 @@ int colorIndicies[21] = {
 // Globals:
 const int maxBuf = 32;  // Size of serial buffer
 char buf[maxBuf + 1]; // 32 byte serial buffer + termination character
+int bufLen = 0;
 unsigned long now = millis();
 // char pumc = 40; <-- Not used?
 unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
@@ -156,7 +157,7 @@ void receiveData(int byteCount) {
 
     Serial.print("bufIndex: ");
     Serial.println(bufIndex);
-    int bufLen = bufIndex;
+    bufLen = bufIndex;
 
     Serial.println("Finished reading probably.");
     // If all bytes of packet were recieved
@@ -387,11 +388,11 @@ void pSet(long microseconds) {
 }
 
 bool checkCRC() {
-    int recievedCRC = buf[2];
+    int recievedCRC = buf[bufLen -2];
 
-    int calculatedCRC = crc16((uint8_t *) buf, (strlen(buf) - 2), 0x1021, 0x0000);
+    int calculatedCRC = crc16((uint8_t *) buf, (bufLen - 2), 0x1021, 0x0000);
     recievedCRC = recievedCRC << 8;
-    recievedCRC |= (uint8_t) buf[3];
+    recievedCRC |= (uint8_t) buf[bufLen - 1];
 
     Serial.print("recieved crc: ");
     Serial.println(recievedCRC);
