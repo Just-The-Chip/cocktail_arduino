@@ -317,6 +317,7 @@ void doPumpCmd(int numIngredients) {
     digitalWrite(pIO, true);    // turns on pump
     // TODO: Add check to make sure cup is placed
     scale.tare(5);
+    float drinkWeight = scale.get_units(5) * 1000; // Get current weight
     
     // For each Ingredient
     Serial.print("numIngredients: ");
@@ -325,7 +326,7 @@ void doPumpCmd(int numIngredients) {
         Serial.print("Dispensing ingredient ");
         Serial.println(i);
         int position = parsedBuf[i][0];
-        float drinkWeight = scale.get_units(5) * 1000; // Get current weight
+
         unsigned long pumpStart = millis();
         drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
         Serial.print("Parsedbuf: ");
