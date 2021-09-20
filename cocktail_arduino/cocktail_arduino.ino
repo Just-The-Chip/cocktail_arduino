@@ -58,7 +58,7 @@ int colorIndicies[21] = {
 
 // Globals:
 const int maxBuf = 32;  // Size of serial buffer
-char buf[maxBuf + 1]; // 32 byte serial buffer + termination character
+unsigned char buf[maxBuf + 1]; // 32 byte serial buffer + termination character
 int bufLen = 0;
 unsigned long now = millis();
 // char pumc = 40; <-- Not used?
@@ -231,6 +231,9 @@ void parseBuf() {
 
     Serial.println("CRC is good, I'm happy for you.");
 
+    Serial.print("parsedBufIndex: ");
+    Serial.println(parsedBufIndex);
+
     // If parsing command (index 0), else if parsing ingredient/jar position
     if (parsedBufIndex == 0) {
         numIndeces = buf[1];
@@ -241,15 +244,27 @@ void parseBuf() {
         parsedBuf[parsedBufIndex][1] = 0;
         for (int i=1; i<5; i++) {
             parsedBuf[parsedBufIndex][1] |= buf[i];
-            parsedBuf[parsedBufIndex][1] = parsedBuf[parsedBufIndex][1] << 8;
+
+            if(i < 4) {
+              parsedBuf[parsedBufIndex][1] = parsedBuf[parsedBufIndex][1] << 8;
+            }    
         }
     }
 
     buf[0] = "\0";
     ack();
 
+    Serial.print("numIndeces: ");
+    Serial.println(numIndeces);
+
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
+        Serial.println("Printing parsed commands:");
+        for(int i=0; i<(numIndeces+1); i++) {
+            Serial.print(parsedBuf[i][0]);
+            Serial.print(" ");
+            Serial.println(parsedBuf[i][1]);
+        }
         command recievedCommand = parsedBuf[0][0];
         Serial.print("received command: ");
         Serial.println(recievedCommand);
@@ -266,9 +281,9 @@ void parseBuf() {
         }
         parsedBufIndex = 0;
         numIndeces = 0;
+    } else {
+      parsedBufIndex++;
     }
-
-    parsedBufIndex++;
 
     Serial.println("-----");
 }
@@ -304,18 +319,28 @@ void doPumpCmd(int numIngredients) {
     scale.tare(5);
     
     // For each Ingredient
-    for (int i = 1; i < numIngredients; i++) {  // i=1 because index 0 contains the command
+    Serial.print("numIngredients: ");
+    Serial.println(numIngredients);
+    for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
+        Serial.print("Dispensing ingredient ");
+        Serial.println(i);
         int position = parsedBuf[i][0];
-        float drinkWeight = scale.get_units(5); // Get current weight
+        float drinkWeight = scale.get_units(5) * 1000; // Get current weight
         unsigned long pumpStart = millis();
         drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
+        Serial.print("Parsedbuf: ");
+        Serial.println(parsedBuf[i][1]);
         
         jars[position] -> SetLight();
         jars[position] -> SetValve();
         // Check scale until target weight is reached or timeout
-        float currentWeight = scale.get_units(1);
+        float currentWeight = scale.get_units(1) * 1000;
         while (currentWeight <= drinkWeight) {
-            currentWeight = scale.get_units(1);
+            currentWeight = scale.get_units(1) * 1000;
+            Serial.print("Target: ");
+            Serial.print(drinkWeight);
+            Serial.print(" CurrentWeight: ");
+            Serial.println(currentWeight);
             if (millis() >= pumpStart + 120000) {
                 break;
             }
@@ -325,8 +350,8 @@ void doPumpCmd(int numIngredients) {
 
         unsigned long currentTime = millis();
         // Give time for drink weight to stabalize before next ingredient
-        while ((millis - currentTime) > 1000) {
-            Serial.println(scale.get_units(1));
+        while ((millis() - currentTime) < 1000) {
+            Serial.println(scale.get_units(1) * 1000);
         }
     }
 
