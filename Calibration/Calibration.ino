@@ -4,6 +4,7 @@
 HX711 scale;
 uint8_t scaleDataPin = 6;
 uint8_t scaleClockPin = 7;
+int weight = 398;
 
 int eeAddress = 0; //Location we want the data to be put.
 float calValue;
@@ -29,7 +30,7 @@ void setup()
     while (!Serial.available());
     while (Serial.available()) Serial.read();
 
-    scale.calibrate_scale(1000, 5);
+    scale.calibrate_scale(weight, 5);
     Serial.print("UNITS: ");
     Serial.println(scale.get_units(10));
 
@@ -38,11 +39,10 @@ void setup()
     // eeAddress += sizeof(calValue); //Move address to the next byte after float 'f'.
 
     Serial.println("\nScale is calibrated, press a key to continue");
-    while (!Serial.available());
-    while (Serial.available()) Serial.read();
 }
 
 void loop()
 {
-    /* Empty loop */
+    Serial.println(scale.get_units(10));
+
 }
