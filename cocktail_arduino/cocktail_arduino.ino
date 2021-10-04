@@ -65,6 +65,7 @@ unsigned long now = millis();
 unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
 bool checkBuf = false;
 int eepromAddress = 0;
+bool ack = false;
 
 // Variables for pump operation
 int pIO = 43;               // pin of pump
@@ -86,6 +87,7 @@ void setup() {
 
     Wire.begin(SLAVE_ADDRESS);
     Wire.onReceive(receiveData);
+    Wire.onRequest(requestEvent);
     // Wire.onRequest(sendData);
     buf[0] = '\0'; // Clears 'buf' by placing termination character at index 0
 
@@ -95,6 +97,7 @@ void setup() {
     setupStrip();
     setupJars();
     setupScale();
+    Serial.println("Rdy to Dispense!");
 }
 
 void setupStrip() {
@@ -145,7 +148,7 @@ void receiveData(int byteCount) {
         if (packetLen > maxBuf) {
             Serial.println("aw heck maxbuff is like too small?");
             packetLen = 0;
-            nack();
+            ack = false;
             return;
         }
     }
@@ -177,6 +180,11 @@ void receiveData(int byteCount) {
     }
 
     return;
+}
+
+void requestEvent() {
+    if (ack) sendAck();
+    else sendNack();
 }
 
 // LOOP-----------------------------------------------------------------------------------
@@ -225,7 +233,7 @@ void parseBuf() {
     if (!crcGood) {
         Serial.println("CRC is NOT GOOD!!!!!!");
         Serial.println("---");
-        nack();
+        ack = false;
         return;
     }
 
@@ -252,7 +260,7 @@ void parseBuf() {
     }
 
     buf[0] = "\0";
-    ack();
+    ack = true;
 
     Serial.print("numIndeces: ");
     Serial.println(numIndeces);
@@ -434,13 +442,17 @@ bool checkCRC() {
     return calculatedCRC == recievedCRC;
 }
 
-void nack() {
+void sendNack() {
     // TODO: implement nack
     Wire.flush();
+    Wire.write(0x15);
+    //Serial.println("Sent Nack");
     return;
 }
 
-void ack() {
+void sendAck() {
     // TODO: implement ack
+    Wire.write(0x06);
+    Serial.println("AK");
     return;
 }
