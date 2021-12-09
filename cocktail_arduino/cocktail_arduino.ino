@@ -135,51 +135,57 @@ void receiveData(int byteCount) {
     static int packetLen = 0;
     static int bufIndex = 0;
     
-    // Number of bytes being sent by master
-    Serial.print("bytes incomming: ");
+    Serial.print("B");
     Serial.println(byteCount);
 
     // If reading first byte of packet
     if (packetLen == 0) {
-        packetLen = Wire.read();
-        Serial.print("Packet length: ");
-        Serial.println(packetLen);
-        // If packet length is unreasonable
-        if (packetLen > maxBuf) {
-            Serial.println("aw heck maxbuff is like too small?");
-            packetLen = 0;
-            ack = false;
-            return;
-        }
+      byte firstByte = Wire.read();
+      if ((byteCount == 1) && (firstByte == 0x15)) return; // This happens when pi requests ack/nack
+
+      packetLen = firstByte;
+      // Serial.print("P");
+      // Serial.println(packetLen);
+      // If packet length is unreasonable
+      if (packetLen > maxBuf) {
+          // Serial.println("aw heck maxbuff is like too small?");
+          packetLen = 0;
+          ack = false;
+          return;
+      }
     }
 
     while (Wire.available()) {
         buf[bufIndex] = Wire.read();
+        Serial.print(buf[bufIndex], HEX);
+        Serial.print(" ");
         bufIndex++;
     }
 
-    Serial.print("bufIndex: ");
-    Serial.println(bufIndex);
+    // Serial.print("bufIndex: ");
+    // Serial.println(bufIndex);
     bufLen = bufIndex;
 
-    Serial.println("Finished reading probably.");
+    // Serial.println("Finished reading probably.");
     // If all bytes of packet were recieved
     if (bufIndex >= (packetLen - 1)) {
         // This adds the string termination character to buf
-        Serial.println("about to print buf: ");
+        // Serial.println("about to print buf: ");
         buf[packetLen] = '\0';
         packetLen = 0;
         bufIndex = 0;
         // Serial.print(buf, HEX);
-        for(int i = 0; i < bufLen; i++) {
-          Serial.print(buf[i], DEC);
-          Serial.print(" ");
-        }
-        Serial.println("   wow cool");
+        // for(int i = 0; i < bufLen; i++) {
+        //   Serial.print(buf[i], DEC);
+        //   Serial.print(" ");
+        // }
+        // Serial.println("   wow cool");
         checkBuf = true;
     }
+    Serial.println();
 
     return;
+    
 }
 
 void requestEvent() {
@@ -231,16 +237,16 @@ void parseBuf() {
 
     bool crcGood = checkCRC();
     if (!crcGood) {
-        Serial.println("CRC is NOT GOOD!!!!!!");
-        Serial.println("---");
+        // Serial.println("!C");
+        // Serial.println("---");
         ack = false;
         return;
     }
 
-    Serial.println("CRC is good, I'm happy for you.");
+    // Serial.println("CRC is good, I'm happy for you.");
 
-    Serial.print("parsedBufIndex: ");
-    Serial.println(parsedBufIndex);
+    // Serial.print("parsedBufIndex: ");
+    // Serial.println(parsedBufIndex);
 
     // If parsing command (index 0), else if parsing ingredient/jar position
     if (parsedBufIndex == 0) {
@@ -262,20 +268,20 @@ void parseBuf() {
     buf[0] = "\0";
     ack = true;
 
-    Serial.print("numIndeces: ");
-    Serial.println(numIndeces);
+    // Serial.print("numIndeces: ");
+    // Serial.println(numIndeces);
 
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
-        Serial.println("Printing parsed commands:");
+        // Serial.println("Printing parsed commands:");
         for(int i=0; i<(numIndeces+1); i++) {
-            Serial.print(parsedBuf[i][0]);
-            Serial.print(" ");
-            Serial.println(parsedBuf[i][1]);
+            // Serial.print(parsedBuf[i][0]);
+            // Serial.print(" ");
+            // Serial.println(parsedBuf[i][1]);
         }
         command recievedCommand = parsedBuf[0][0];
-        Serial.print("received command: ");
-        Serial.println(recievedCommand);
+        // Serial.print("received command: ");
+        // Serial.println(recievedCommand);
 
         switch (recievedCommand) {
             case pump:
@@ -285,7 +291,8 @@ void parseBuf() {
                 doShowCmd(numIndeces);
                 break;
             default:
-                Serial.println("Bad command");
+                // Serial.println("Bad command");
+                break;
         }
         parsedBufIndex = 0;
         numIndeces = 0;
@@ -293,7 +300,7 @@ void parseBuf() {
       parsedBufIndex++;
     }
 
-    Serial.println("-----");
+    // Serial.println("-----");
 }
 
 // void doPumpCmd(char *params) {
@@ -328,17 +335,17 @@ void doPumpCmd(int numIngredients) {
     float drinkWeight = scale.get_units(5) * 1000; // Get current weight
     
     // For each Ingredient
-    Serial.print("numIngredients: ");
-    Serial.println(numIngredients);
+    // Serial.print("numIngredients: ");
+    // Serial.println(numIngredients);
     for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
-        Serial.print("Dispensing ingredient ");
-        Serial.println(i);
+        // Serial.print("Dispensing ingredient ");
+        // Serial.println(i);
         int position = parsedBuf[i][0];
 
         unsigned long pumpStart = millis();
         drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
-        Serial.print("Parsedbuf: ");
-        Serial.println(parsedBuf[i][1]);
+        // Serial.print("Parsedbuf: ");
+        // Serial.println(parsedBuf[i][1]);
         
         jars[position] -> SetLight();
         jars[position] -> SetValve();
@@ -346,10 +353,10 @@ void doPumpCmd(int numIngredients) {
         float currentWeight = scale.get_units(1) * 1000;
         while (currentWeight <= drinkWeight) {
             currentWeight = scale.get_units(1) * 1000;
-            Serial.print("Target: ");
-            Serial.print(drinkWeight);
-            Serial.print(" CurrentWeight: ");
-            Serial.println(currentWeight);
+            // Serial.print("Target: ");
+            // Serial.print(drinkWeight);
+            // Serial.print(" CurrentWeight: ");
+            // Serial.println(currentWeight);
             if (millis() >= pumpStart + 120000) {
                 break;
             }
@@ -360,7 +367,7 @@ void doPumpCmd(int numIngredients) {
         unsigned long currentTime = millis();
         // Give time for drink weight to stabalize before next ingredient
         while ((millis() - currentTime) < 1000) {
-            Serial.println(scale.get_units(1) * 1000);
+            // Serial.println(scale.get_units(1) * 1000);
         }
     }
 
@@ -423,7 +430,7 @@ void pSet(long microseconds) {
     pstate = HIGH;
 
     digitalWrite(pIO, HIGH);
-    Serial.print("pSet works");
+    // Serial.print("pSet works");
 }
 
 bool checkCRC() {
@@ -432,18 +439,20 @@ bool checkCRC() {
     int calculatedCRC = crc16((uint8_t *) buf, (bufLen - 2), 0x1021, 0x0000);
     recievedCRC = recievedCRC << 8;
     recievedCRC |= (uint8_t) buf[bufLen - 1];
+    // Serial.println("C");
 
-    Serial.print("recieved crc: ");
-    Serial.println(recievedCRC);
+    // Serial.print("RC");
+    // Serial.println(recievedCRC, HEX);
 
-    Serial.print("calculated crc: ");
-    Serial.println(calculatedCRC);
+    // Serial.print("CC");
+    // Serial.println(calculatedCRC, HEX);
 
     return calculatedCRC == recievedCRC;
 }
 
 void sendNack() {
     // TODO: implement nack
+    Serial.println("NAK");
     Wire.flush();
     Wire.write(0x15);
     //Serial.println("Sent Nack");
@@ -452,7 +461,7 @@ void sendNack() {
 
 void sendAck() {
     // TODO: implement ack
-    Wire.write(0x06);
     Serial.println("AK");
+    Wire.write(0x06);
     return;
 }
