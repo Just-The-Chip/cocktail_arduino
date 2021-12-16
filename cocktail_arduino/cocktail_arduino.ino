@@ -61,11 +61,10 @@ const int maxBuf = 32;  // Size of serial buffer
 unsigned char buf[maxBuf + 1]; // 32 byte serial buffer + termination character
 int bufLen = 0;
 unsigned long now = millis();
-// char pumc = 40; <-- Not used?
 unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
 bool checkBuf = false;
 int eepromAddress = 0;
-bool ack = false;
+volatile bool ack = false;
 
 // Variables for pump operation
 int pIO = 43;               // pin of pump
@@ -134,6 +133,13 @@ void setupScale() {
 void receiveData(int byteCount) {
     static int packetLen = 0;
     static int bufIndex = 0;
+    static unsigned long lastEvent = millis();
+
+    if (millis - lastEvent > 1000) {
+        buf[packetLen] = '\0';
+        packetLen = 0;
+        bufIndex = 0;
+    }
     
     Serial.print("B");
     Serial.println(byteCount);
@@ -144,8 +150,7 @@ void receiveData(int byteCount) {
       if ((byteCount == 1) && (firstByte == 0x15)) return; // This happens when pi requests ack/nack
 
       packetLen = firstByte;
-      // Serial.print("P");
-      // Serial.println(packetLen);
+
       // If packet length is unreasonable
       if (packetLen > maxBuf) {
           // Serial.println("aw heck maxbuff is like too small?");
@@ -162,24 +167,15 @@ void receiveData(int byteCount) {
         bufIndex++;
     }
 
-    // Serial.print("bufIndex: ");
-    // Serial.println(bufIndex);
     bufLen = bufIndex;
 
-    // Serial.println("Finished reading probably.");
     // If all bytes of packet were recieved
     if (bufIndex >= (packetLen - 1)) {
         // This adds the string termination character to buf
-        // Serial.println("about to print buf: ");
         buf[packetLen] = '\0';
         packetLen = 0;
         bufIndex = 0;
-        // Serial.print(buf, HEX);
-        // for(int i = 0; i < bufLen; i++) {
-        //   Serial.print(buf[i], DEC);
-        //   Serial.print(" ");
-        // }
-        // Serial.println("   wow cool");
+
         checkBuf = true;
     }
     Serial.println();
@@ -200,35 +196,7 @@ void loop() {
         checkBuf = false;
         parseBuf();
     }
-    // now = millis();
-
-    // Update all jars to see if the valve or lights need to be turned off
-    // for (int i = 0; i < 21; i++) {
-    //     (jars[i])->Update();
-    // }
-
-    // Update to see if pump needs to be turned off
-    // pUpdate();
-
-    // commit LED updates made by jars
-    // strip.show();
 }
-
-// void checkbuf() {
-//     // This pointer is used by the strtok commands below
-//     char *point = strtok(buf, ":");
-
-//     //get remainder of string
-//     char *params = strtok(NULL, "\0");
-//     if (strcmp(point, "pump") == 0) {
-//         doPumpCmd(params);
-//     } else if (strcmp(point, "show") == 0) {
-//         doShowCmd(params);
-//     }
-
-//     // Clears 'buf' by placing termination character at index 0
-//     buf[0] = '\0';
-// }
 
 // Parse single packet out of buf
 void parseBuf() {
@@ -242,11 +210,6 @@ void parseBuf() {
         ack = false;
         return;
     }
-
-    // Serial.println("CRC is good, I'm happy for you.");
-
-    // Serial.print("parsedBufIndex: ");
-    // Serial.println(parsedBufIndex);
 
     // If parsing command (index 0), else if parsing ingredient/jar position
     if (parsedBufIndex == 0) {
@@ -268,20 +231,9 @@ void parseBuf() {
     buf[0] = "\0";
     ack = true;
 
-    // Serial.print("numIndeces: ");
-    // Serial.println(numIndeces);
-
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
-        // Serial.println("Printing parsed commands:");
-        for(int i=0; i<(numIndeces+1); i++) {
-            // Serial.print(parsedBuf[i][0]);
-            // Serial.print(" ");
-            // Serial.println(parsedBuf[i][1]);
-        }
         command recievedCommand = parsedBuf[0][0];
-        // Serial.print("received command: ");
-        // Serial.println(recievedCommand);
 
         switch (recievedCommand) {
             case pump:
@@ -303,30 +255,6 @@ void parseBuf() {
     // Serial.println("-----");
 }
 
-// void doPumpCmd(char *params) {
-//     Serial.println(buf);
-//     // // This pointer is used by the strtok commands below
-//     // char *point = strtok(buf, ":");
-//     Serial.println(params);
-
-//     char *point = strtok(params, ":");
-//     int jarNum = atoi(point);
-
-//     point = strtok(NULL, ":");
-//     long int mS = strtol(point,NULL,10);
-
-//     Serial.print("Jar num: ");
-//     Serial.println(jarNum);
-//     Serial.print("ms: ");
-//     Serial.println(mS);
-
-//     if (jarNum > 0 && jarNum <= 21) {
-//         (jars[jarNum - 1])->Set(mS);
-//     } else {
-//         Serial.println("Unhandled jar# selected for pump");
-//     }
-// }
-
 void doPumpCmd(int numIngredients) {
     strip.clear();              // turn off all LEDs
     digitalWrite(pIO, true);    // turns on pump
@@ -335,74 +263,48 @@ void doPumpCmd(int numIngredients) {
     float drinkWeight = scale.get_units(5) * 1000; // Get current weight
     
     // For each Ingredient
-    // Serial.print("numIngredients: ");
-    // Serial.println(numIngredients);
     for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
-        // Serial.print("Dispensing ingredient ");
-        // Serial.println(i);
-        int position = parsedBuf[i][0];
+        int position = parsedBuf[i][0] - 1;
 
-        unsigned long pumpStart = millis();
+        // Check for stability, then tare scale
+        float lastReading = scale.get_units(1);
+        while ((abs(scale.get_units(1) - lastReading)) > 1.0) {
+            delay(500);
+            lastReading = scale.get_units(1);
+            Serial.println(lastReading);
+        }
+
+        drinkWeight = scale.get_units(5) * 1000; // Get current weight
         drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
-        // Serial.print("Parsedbuf: ");
-        // Serial.println(parsedBuf[i][1]);
-        
+        unsigned long pumpStart = millis();
+
         jars[position] -> SetLight();
         jars[position] -> SetValve();
         // Check scale until target weight is reached or timeout
         float currentWeight = scale.get_units(1) * 1000;
         while (currentWeight <= drinkWeight) {
             currentWeight = scale.get_units(1) * 1000;
-            // Serial.print("Target: ");
-            // Serial.print(drinkWeight);
-            // Serial.print(" CurrentWeight: ");
-            // Serial.println(currentWeight);
-            if (millis() >= pumpStart + 120000) {
+            Serial.println(currentWeight);
+            if (millis() >= pumpStart + 40000) {
                 break;
             }
+            if (currentWeight < -8000.0) {
+              break;
+            }
         }
+        
         jars[position] -> UnsetValve();
         jars[position] -> UnsetLight();
 
-        unsigned long currentTime = millis();
-        // Give time for drink weight to stabalize before next ingredient
-        while ((millis() - currentTime) < 1000) {
-            // Serial.println(scale.get_units(1) * 1000);
+        if (currentWeight < -8000.0) {
+              break;
         }
+
+        unsigned long currentTime = millis();
     }
 
     digitalWrite(pIO, false); // turn off pump
 }
-
-// void your mom
-// void doShowCmd(char *params) {
-//     Serial.println("BEGIN show:");
-//     // turn off all jar lights that are currently on
-//     for (int i = 0; i < 21; i++) {
-//         (jars[i])->UnsetLight();
-//     }
-
-//     //iterate through comma separated list of jars
-//     char *point = strtok(params, ",");
-
-//     while (point != NULL) {
-//         Serial.print(point);
-//         Serial.print(", ");
-
-//         int jarNum = atoi(point);
-
-//         if (jarNum > 0 && jarNum <= 21) {
-//             // light it up for 30s
-//             (jars[jarNum - 1])->SetLight(30 * 1000);
-//         } else {
-//             Serial.println("Unhandled jar# selected for show");
-//         }
-
-//         point = strtok(NULL, ",");
-//     }
-
-//     Serial.println("\nEND show");
-// }
 
 void doShowCmd(int numPositions) {
     strip.clear();              // turn off all LEDs
@@ -439,13 +341,6 @@ bool checkCRC() {
     int calculatedCRC = crc16((uint8_t *) buf, (bufLen - 2), 0x1021, 0x0000);
     recievedCRC = recievedCRC << 8;
     recievedCRC |= (uint8_t) buf[bufLen - 1];
-    // Serial.println("C");
-
-    // Serial.print("RC");
-    // Serial.println(recievedCRC, HEX);
-
-    // Serial.print("CC");
-    // Serial.println(calculatedCRC, HEX);
 
     return calculatedCRC == recievedCRC;
 }
@@ -455,7 +350,6 @@ void sendNack() {
     Serial.println("NAK");
     Wire.flush();
     Wire.write(0x15);
-    //Serial.println("Sent Nack");
     return;
 }
 
