@@ -112,15 +112,9 @@ void setup() {
 }
 
 void setupStrip() {
-    colors[0] = strip.Color(255, 0, 32);  // pink
-    colors[1] = strip.Color(255, 32, 0);  // orange
-    colors[2] = strip.Color(224, 255, 0); // green
-    colors[3] = strip.Color(0, 255, 128); // bluegreen
-    colors[4] = strip.Color(0, 0, 255);   // blue
-    colors[5] = strip.Color(255, 0, 255); // magenta
-
     strip.begin();
     strip.show(); // Initialize all pixels to 'off'
+    strip.setBrightness(10);
 }
 
 void setupJars() {
@@ -206,6 +200,7 @@ void loop() {
         checkBuf = false;
         parseBuf();
     }
+    rainbow(10);
 }
 
 // Parse single packet out of buf
@@ -364,4 +359,15 @@ void sendStatus() {
     Wire.flush();
     Wire.write(status);
     return;
+}
+
+void rainbow(int wait) {
+  for(long firstPixelHue = 0; firstPixelHue < 5*65536; firstPixelHue += 256) {
+    for(int i=0; i<strip.numPixels(); i++) { 
+      int pixelHue = firstPixelHue + (i * 65536L / strip.numPixels());
+      strip.setPixelColor(i, strip.gamma32(strip.ColorHSV(pixelHue)));
+    }
+    strip.show();
+    delay(wait);
+  }
 }
