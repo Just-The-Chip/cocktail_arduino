@@ -365,10 +365,3 @@ void sendStatus() {
     Wire.write(status);
     return;
 }
-
-void sendAck() {
-    // TODO: implement ack
-    Serial.println("AK");
-    Wire.write(0x06);
-    return;
-}
