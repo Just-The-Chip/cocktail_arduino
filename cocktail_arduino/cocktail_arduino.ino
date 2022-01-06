@@ -64,7 +64,7 @@ unsigned long now = millis();
 unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
 bool checkBuf = false;
 int eepromAddress = 0;
-volatile bool ack = false;
+// volatile bool ack = false;
 
 // Variables for pump operation
 int pIO = 43;               // pin of pump
@@ -76,6 +76,16 @@ enum command: char{
     pump = 'p',
     show = 's'
 };
+
+enum statusCode: char{   
+    ack = 0x06, 
+    nack = 0x15, 
+    reading = 0x05,
+    dispensing = 0x07,
+    ready = 0x03
+};
+
+volatile statusCode status;
 
 Adafruit_DotStar strip = Adafruit_DotStar(90, DOTSTAR_BRG);
 uint32_t colors[6];
@@ -97,6 +107,8 @@ void setup() {
     setupJars();
     setupScale();
     Serial.println("Rdy to Dispense!");
+
+    status = ready;
 }
 
 void setupStrip() {
@@ -131,39 +143,40 @@ void setupScale() {
 }
 
 void receiveData(int byteCount) {
-    static int packetLen = 0;
+    int packetLen = 0;
     static int bufIndex = 0;
     static unsigned long lastEvent = millis();
 
     if (millis - lastEvent > 1000) {
         buf[packetLen] = '\0';
-        packetLen = 0;
         bufIndex = 0;
     }
     
-    Serial.print("B");
-    Serial.println(byteCount);
+    //  Serial.print("B");
+    //  Serial.println(byteCount);
 
     // If reading first byte of packet
     if (packetLen == 0) {
-      byte firstByte = Wire.read();
-      if ((byteCount == 1) && (firstByte == 0x15)) return; // This happens when pi requests ack/nack
+      packetLen = Wire.read();
 
-      packetLen = firstByte;
+      // Serial.print("P");
+      // Serial.println(packetLen);
 
       // If packet length is unreasonable
-      if (packetLen > maxBuf) {
-          // Serial.println("aw heck maxbuff is like too small?");
+      if (packetLen != (byteCount - 1)) {
+          Serial.println("aw heck maxbuff is like too small?");
           packetLen = 0;
-          ack = false;
+          status = nack;
           return;
       }
     }
 
+    status = reading;
+
     while (Wire.available()) {
         buf[bufIndex] = Wire.read();
-        Serial.print(buf[bufIndex], HEX);
-        Serial.print(" ");
+        // Serial.print(buf[bufIndex], HEX);
+        // Serial.print(" ");
         bufIndex++;
     }
 
@@ -178,15 +191,12 @@ void receiveData(int byteCount) {
 
         checkBuf = true;
     }
-    Serial.println();
 
     return;
-    
 }
 
 void requestEvent() {
-    if (ack) sendAck();
-    else sendNack();
+    sendStatus();
 }
 
 // LOOP-----------------------------------------------------------------------------------
@@ -207,7 +217,7 @@ void parseBuf() {
     if (!crcGood) {
         // Serial.println("!C");
         // Serial.println("---");
-        ack = false;
+        status = nack;
         return;
     }
 
@@ -229,7 +239,7 @@ void parseBuf() {
     }
 
     buf[0] = "\0";
-    ack = true;
+    status = ack;
 
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
@@ -239,7 +249,7 @@ void parseBuf() {
             case pump:
                 doPumpCmd(numIndeces);
                 break;
-            case show:
+            case show: // TODO: remove
                 doShowCmd(numIndeces);
                 break;
             default:
@@ -256,6 +266,8 @@ void parseBuf() {
 }
 
 void doPumpCmd(int numIngredients) {
+    status = dispensing;
+
     strip.clear();              // turn off all LEDs
     digitalWrite(pIO, true);    // turns on pump
     // TODO: Add check to make sure cup is placed
@@ -304,6 +316,7 @@ void doPumpCmd(int numIngredients) {
     }
 
     digitalWrite(pIO, false); // turn off pump
+    status = ready;
 }
 
 void doShowCmd(int numPositions) {
@@ -345,11 +358,11 @@ bool checkCRC() {
     return calculatedCRC == recievedCRC;
 }
 
-void sendNack() {
+void sendStatus() {
     // TODO: implement nack
-    Serial.println("NAK");
+    Serial.println(status);
     Wire.flush();
-    Wire.write(0x15);
+    Wire.write(status);
     return;
 }
 
