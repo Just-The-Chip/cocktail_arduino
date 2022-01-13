@@ -27,6 +27,8 @@ HX711 scale;
 uint8_t scaleDataPin = 6;
 uint8_t scaleClockPin = 7;
 
+uint8_t bellPin = 2;
+
 IOtimer *jars[21];
 int colorIndicies[21] = {
     0,  //0
@@ -100,6 +102,7 @@ void setup() {
     // Wire.onRequest(sendData);
     buf[0] = '\0'; // Clears 'buf' by placing termination character at index 0
 
+    pinMode(bellPin, OUTPUT);
     pinMode(pIO, OUTPUT);   // Initializes pump pin
     digitalWrite(pIO, LOW); // Initializes pump pin
 
@@ -311,6 +314,8 @@ void doPumpCmd(int numIngredients) {
     }
 
     digitalWrite(pIO, false); // turn off pump
+
+    ringBell();
     status = ready;
 }
 
@@ -382,4 +387,18 @@ void rainbow(int wait) {
 
     lastEvent = now;
   }
+}
+
+void ringBell() {
+  // NOTE: We are using delay because it seems we can get away with it
+  //       but if issues come up from blocking we will have to refactor. 
+  digitalWrite(bellPin, HIGH);
+  delay(100);
+  digitalWrite(bellPin, LOW);
+
+  delay(100);
+
+  digitalWrite(bellPin, HIGH);
+  delay(100);
+  digitalWrite(bellPin, LOW)
 }
