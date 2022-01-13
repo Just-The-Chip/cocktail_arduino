@@ -200,7 +200,7 @@ void loop() {
         checkBuf = false;
         parseBuf();
     }
-    rainbow(10);
+    rainbow(25);
 }
 
 // Parse single packet out of buf
@@ -362,12 +362,24 @@ void sendStatus() {
 }
 
 void rainbow(int wait) {
-  for(long firstPixelHue = 0; firstPixelHue < 5*65536; firstPixelHue += 256) {
+  static long firstPixelHue = 0;
+  static unsigned long lastEvent = millis();
+  unsigned long now = millis();
+
+  if (now - lastEvent > wait) {
+
     for(int i=0; i<strip.numPixels(); i++) { 
       int pixelHue = firstPixelHue + (i * 65536L / strip.numPixels());
       strip.setPixelColor(i, strip.gamma32(strip.ColorHSV(pixelHue)));
     }
     strip.show();
-    delay(wait);
+
+    firstPixelHue += 256;
+
+    if (firstPixelHue >=  5*65536) {
+      firstPixelHue = 0;
+    }
+
+    lastEvent = now;
   }
 }
