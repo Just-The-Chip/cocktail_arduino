@@ -393,12 +393,12 @@ void ringBell() {
   // NOTE: We are using delay because it seems we can get away with it
   //       but if issues come up from blocking we will have to refactor. 
   digitalWrite(bellPin, HIGH);
-  delay(100);
+  delay(9);
   digitalWrite(bellPin, LOW);
 
-  delay(100);
+  delay(150);
 
   digitalWrite(bellPin, HIGH);
-  delay(100);
-  digitalWrite(bellPin, LOW)
+  delay(9);
+  digitalWrite(bellPin, LOW);
 }
