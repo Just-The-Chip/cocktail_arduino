@@ -1,14 +1,6 @@
 // NOTE: I2C exchanges cannot exceede 32 bytes (32 characters)
 // NOTE: IO HIGH is actually relay off.  LOW is on.  All relay IO logic is NOT
 
-// High level Dispense sequence:
-// Set pump and (n)air valve on for (n)miliseconds
-// Repeat for each  individual air valve (pi will send a sequence of commands
-// with appropriate delay between them)
-
-// Commands:
-// pump:'jar':'mS'  This will pump 'jar' for 'mS' time
-
 #include "IOtimer.h"
 #include "common.h"
 #include <Adafruit_DotStar.h>
@@ -17,8 +9,6 @@
 #include <HX711.h>
 #include <EEPROM.h>
 #include <HardwareSerial.h>
-// #define LIGHTDATA 12
-// #define LIGHTCLOCK 11
 
 #define SLAVE_ADDRESS 0x04
 
@@ -29,52 +19,19 @@ uint8_t scaleClockPin = 7;
 
 uint8_t bellPin = 2;
 
+uint8_t pIO = 43;               // pin of pump
+
 IOtimer *jars[21];
-int colorIndicies[21] = {
-    0,  //0
-    6,  //1
-    11, //2
-    16, //3
-
-    18, //4
-    23, //5
-    29, //6
-    34, //7
-
-    36, //8
-    41, //9
-    47, //10
-    52, //11
-
-    54, //12
-    59, //13
-    65, //14
-    70, //15
-
-    72, //16
-    76, //17
-    80, //18
-    85, //19
-    88  //20
-};
 
 // Globals:
 const int maxBuf = 32;  // Size of serial buffer
 unsigned char buf[maxBuf + 1]; // 32 byte serial buffer + termination character
 int bufLen = 0;
-unsigned long now = millis();
 unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 columns
 bool checkBuf = false;
 int eepromAddress = 0;
-// volatile bool ack = false;
 
-// Variables for pump operation
-int pIO = 43;               // pin of pump
-long ptimeSet = 0; // mS time that pump was set to on
-long ponTime = 0;  // mS time for pump to stay on
-bool pstate = LOW;          // Is HIGH when pump is active
-
-enum command: char{
+enum command: char {
     pump = 'p',
     show = 's'
 };
@@ -99,7 +56,6 @@ void setup() {
     Wire.begin(SLAVE_ADDRESS);
     Wire.onReceive(receiveData);
     Wire.onRequest(requestEvent);
-    // Wire.onRequest(sendData);
     buf[0] = '\0'; // Clears 'buf' by placing termination character at index 0
 
     pinMode(bellPin, OUTPUT);
@@ -123,9 +79,8 @@ void setupStrip() {
 void setupJars() {
     IOtimer *jarPointer;
     int startPin = 22;
-    // TODO: Load scale calibration
     for (int i = 0; i < 21; i++) {
-        jarPointer = new IOtimer(startPin + i, colorIndicies[i], char(i));
+        jarPointer = new IOtimer(startPin + i, char(i));
         jars[i] = jarPointer;
     }
 }
@@ -144,20 +99,14 @@ void receiveData(int byteCount) {
     static int bufIndex = 0;
     static unsigned long lastEvent = millis();
 
-    if (millis - lastEvent > 1000) {
+    if (millis() - lastEvent > 1000) {
         buf[packetLen] = '\0';
         bufIndex = 0;
     }
-    
-    //  Serial.print("B");
-    //  Serial.println(byteCount);
 
     // If reading first byte of packet
     if (packetLen == 0) {
       packetLen = Wire.read();
-
-      // Serial.print("P");
-      // Serial.println(packetLen);
 
       // If packet length is unreasonable
       if (packetLen != (byteCount - 1)) {
@@ -196,6 +145,9 @@ void requestEvent() {
     sendStatus();
 }
 
+// Forward Declarations
+void progress(bool reset = false);
+
 // LOOP-----------------------------------------------------------------------------------
 void loop() {
     // Check buffer for commands, and execute if there are any.
@@ -213,8 +165,6 @@ void parseBuf() {
 
     bool crcGood = checkCRC();
     if (!crcGood) {
-        // Serial.println("!C");
-        // Serial.println("---");
         status = nack;
         return;
     }
@@ -236,22 +186,19 @@ void parseBuf() {
         }
     }
 
-    buf[0] = "\0";
+    buf[0] = '\0';
     status = ack;
 
     // If full transmission has been parsed
     if (parsedBufIndex >= numIndeces) {
-        command recievedCommand = parsedBuf[0][0];
+        command recievedCommand = static_cast<command>(parsedBuf[0][0]);
 
         switch (recievedCommand) {
             case pump:
                 doPumpCmd(numIndeces);
                 break;
-            case show: // TODO: remove
-                doShowCmd(numIndeces);
-                break;
             default:
-                // Serial.println("Bad command");
+                Serial.println("Bad command");
                 break;
         }
         parsedBufIndex = 0;
@@ -259,95 +206,60 @@ void parseBuf() {
     } else {
       parsedBufIndex++;
     }
-
-    // Serial.println("-----");
 }
 
 void doPumpCmd(int numIngredients) {
     status = dispensing;
 
     strip.clear();              // turn off all LEDs
-    digitalWrite(pIO, true);    // turns on pump
-    // TODO: Add check to make sure cup is placed
+    strip.show();
+
     scale.tare(5);
-    float drinkWeight = scale.get_units(5) * 1000; // Get current weight
+    digitalWrite(pIO, true);    // turns on pump
+    float drinkWeight = readScale(5); // Get current weight
     
     // For each Ingredient
     for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
+        progress(true);
         int position = parsedBuf[i][0] - 1;
+        unsigned long startTime = millis();
+        float currentWeight = readScale(1);
+        delay(500);
 
         // Check for stability, then tare scale
-        float lastReading = scale.get_units(1);
-        while ((abs(scale.get_units(1) - lastReading)) > 1.0) {
+        while ((abs(readScale(1) - currentWeight)) > 1000) {
             delay(500);
-            lastReading = scale.get_units(1);
-            Serial.println(lastReading);
+            currentWeight = readScale(1);
+            if (millis() >= startTime + 10000) break;  // timeout
+            if (currentWeight < -8000.0) break;  // drink removed
         }
 
-        drinkWeight = scale.get_units(5) * 1000; // Get current weight
+        // Prepare to dispense ingredient
+        drinkWeight = readScale(5); // Get current weight
         drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
-        unsigned long pumpStart = millis();
-
-        jars[position] -> SetLight();
+        startTime = millis();
         jars[position] -> SetValve();
-        // Check scale until target weight is reached or timeout
-        float currentWeight = scale.get_units(1) * 1000;
+
+        // Check scale until target weight is reached or timeout or drink removed
         while (currentWeight <= drinkWeight) {
-            currentWeight = scale.get_units(1) * 1000;
+            progress();
+            currentWeight = readScale(1);
             Serial.println(currentWeight);
-            if (millis() >= pumpStart + 40000) {
-                break;
-            }
-            if (currentWeight < -8000.0) {
-              break;
-            }
+            if (millis() >= startTime + 40000) break;  // timeout
+            if (currentWeight < -8000.0) break;  // drink removed
         }
-        
+
+        // Done with ingredient
         jars[position] -> UnsetValve();
-        jars[position] -> UnsetLight();
-
-        if (currentWeight < -8000.0) {
-              break;
-        }
-
-        unsigned long currentTime = millis();
+        if (currentWeight < -8000.0) break; // drink removed
     }
 
     digitalWrite(pIO, false); // turn off pump
-
     ringBell();
     status = ready;
 }
 
-void doShowCmd(int numPositions) {
-    strip.clear();              // turn off all LEDs
-    
-    // For each position
-    for (int i = 1; i < numPositions; i++) {  // i=1 because index 0 contains the command
-        int position = parsedBuf[i][0];
-        jars[position] -> SetLight();
-    }
-}
-
-// This update routine is specifically for the pump
-void pUpdate() {
-    // IF jar is on and onTime has elapsed, turn pump off.
-    if (pstate == HIGH &&  now >= ptimeSet + ponTime) {
-        digitalWrite(pIO, LOW);
-    }
-}
-
-// This Set routine is specifically for the pump
-void pSet(long microseconds) {
-
-    ptimeSet = millis();
-    ponTime = microseconds; //actually miliseconds?
-    pstate = HIGH;
-
-    digitalWrite(pIO, HIGH);
-    // Serial.print("pSet works");
-}
-
+// Returns true if CRC calculation matches recieved CRC
 bool checkCRC() {
     int recievedCRC = buf[bufLen -2];
 
@@ -358,6 +270,7 @@ bool checkCRC() {
     return calculatedCRC == recievedCRC;
 }
 
+// Sends current status to Pi whenever Pi requests it
 void sendStatus() {
     // TODO: implement nack
     Serial.println(status);
@@ -366,6 +279,7 @@ void sendStatus() {
     return;
 }
 
+// Rainbow animation for LEDs when dispenser is idle
 void rainbow(int wait) {
   static long firstPixelHue = 0;
   static unsigned long lastEvent = millis();
@@ -389,6 +303,7 @@ void rainbow(int wait) {
   }
 }
 
+// Rings da bell
 void ringBell() {
   // NOTE: We are using delay because it seems we can get away with it
   //       but if issues come up from blocking we will have to refactor. 
@@ -401,4 +316,33 @@ void ringBell() {
   digitalWrite(bellPin, HIGH);
   delay(9);
   digitalWrite(bellPin, LOW);
+}
+
+// Displays a pseudo progress indicator on the LEDs during dispensing.
+void progress(bool reset = false) {
+  static int head = 0;
+  static uint32_t color = 0xFF0000;
+  
+  if (reset) {
+      strip.clear();
+      strip.show();
+      head = 0;
+      if((color >>= 8) == 0)          //  Next color (R->G->B) ... past blue now?
+        color = 0xFF0000;             //   Yes, reset to red
+      return;
+  }
+
+  strip.setPixelColor(head, color); // 'On' pixel at head
+  strip.show();                     // Refresh strip
+
+  if(++head >= strip.numPixels()) {         // Increment head index.  Off end of strip?
+    head = 0;                       //  Yes, reset head index to start
+    if((color >>= 8) == 0)          //  Next color (R->G->B) ... past blue now?
+      color = 0xFF0000;             //   Yes, reset to red
+  }
+}
+
+// Returns scale reading in milligrams
+float readScale(uint8_t samples) {
+    return scale.get_units(samples) * 1000;
 }
