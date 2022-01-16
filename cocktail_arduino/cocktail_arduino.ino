@@ -146,7 +146,7 @@ void requestEvent() {
 }
 
 // Forward Declarations
-void progress(bool reset = false);
+void progress(float currentWeight, float totalWeight, bool changeColor = false);
 
 // LOOP-----------------------------------------------------------------------------------
 void loop() {
@@ -210,41 +210,48 @@ void parseBuf() {
 
 void doPumpCmd(int numIngredients) {
     status = dispensing;
-
-    strip.clear();              // turn off all LEDs
-    strip.show();
-
-    scale.tare(5);
+    progress(0, 0);
     digitalWrite(pIO, true);    // turns on pump
-    float drinkWeight = readScale(5); // Get current weight
+    scale.tare(5);
+    float targetWeight = readScale(5); // Get current weight
+    float totalWeight = 0;  // Total drink weight, used for progress animation
+
+    // Get total drink weight from buffer
+    for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
+        totalWeight += parsedBuf[i][1];
+    }
     
     // For each Ingredient
-    for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
-        progress(true);
+    for (int i = 1; i < (numIngredients + 1); i++) {
         int position = parsedBuf[i][0] - 1;
         unsigned long startTime = millis();
         float currentWeight = readScale(1);
-        delay(500);
 
-        // Check for stability, then tare scale
-        while ((abs(readScale(1) - currentWeight)) > 1000) {
-            delay(500);
-            currentWeight = readScale(1);
-            if (millis() >= startTime + 10000) break;  // timeout
-            if (currentWeight < -8000.0) break;  // drink removed
-        }
+        // Wait for scale to be stable, then continue
+        do {
+            // delay N milliseconds, while also updating progress and watching out for sabatage
+            unsigned long delayStart = millis();
+            while ((millis() - delayStart) < 500) {
+                currentWeight = readScale(1);
+                progress(currentWeight, totalWeight);
+                if (millis() >= startTime + 10000) break;  // timeout
+                if (currentWeight < -8000.0) break;  // drink removed
+            }
+        } while ((abs(readScale(1) - currentWeight)) > 1000);
 
         // Prepare to dispense ingredient
-        drinkWeight = readScale(5); // Get current weight
-        drinkWeight += parsedBuf[i][1]; // Add weight of this ingredient
+        totalWeight += currentWeight - targetWeight; // Add overflow to total, for progress animation
+        targetWeight = readScale(5); // Get current weight
+        targetWeight += parsedBuf[i][1]; // Add weight of this ingredient
+        if (i>1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
         startTime = millis();
         jars[position] -> SetValve();
 
         // Check scale until target weight is reached or timeout or drink removed
-        while (currentWeight <= drinkWeight) {
-            progress();
+        while (currentWeight <= targetWeight) {
+            progress(currentWeight, totalWeight);
             currentWeight = readScale(1);
-            Serial.println(currentWeight);
+            // Serial.println(currentWeight);
             if (millis() >= startTime + 40000) break;  // timeout
             if (currentWeight < -8000.0) break;  // drink removed
         }
@@ -272,8 +279,7 @@ bool checkCRC() {
 
 // Sends current status to Pi whenever Pi requests it
 void sendStatus() {
-    // TODO: implement nack
-    Serial.println(status);
+    // Serial.println(status);
     Wire.flush();
     Wire.write(status);
     return;
@@ -318,29 +324,36 @@ void ringBell() {
   digitalWrite(bellPin, LOW);
 }
 
-// Displays a pseudo progress indicator on the LEDs during dispensing.
-void progress(bool reset = false) {
+// Displays a progress indicator on the LEDs during dispensing.
+void progress(float currentWeight, float totalWeight, bool changeColor = false) {
   static int head = 0;
-  static uint32_t color = 0xFF0000;
-  
-  if (reset) {
+  static long pixelHue = 0;
+  int dunPixels;
+
+  if (changeColor) {
+    if ((pixelHue += 8192) >=  5*65536) pixelHue = 0;
+    return;
+  }
+
+  // Clears the LEDs, resets the animation
+  if (currentWeight == 0 && totalWeight == 0) {
       strip.clear();
       strip.show();
       head = 0;
-      if((color >>= 8) == 0)          //  Next color (R->G->B) ... past blue now?
-        color = 0xFF0000;             //   Yes, reset to red
       return;
   }
+  
+  dunPixels = ceil((currentWeight / totalWeight) * strip.numPixels());
+  if (dunPixels < 0) return;    // no reason to continue, and prevents buggy behavior
+  if (dunPixels > strip.numPixels()) dunPixels = strip.numPixels();
 
-  strip.setPixelColor(head, color); // 'On' pixel at head
-  strip.show();                     // Refresh strip
-
-  if(++head >= strip.numPixels()) {         // Increment head index.  Off end of strip?
-    head = 0;                       //  Yes, reset head index to start
-    if((color >>= 8) == 0)          //  Next color (R->G->B) ... past blue now?
-      color = 0xFF0000;             //   Yes, reset to red
+  while (head < dunPixels) {
+    strip.setPixelColor(head, strip.gamma32(strip.ColorHSV(pixelHue)));
+    head++;
   }
+  strip.show();                     // Refresh strip
 }
+
 
 // Returns scale reading in milligrams
 float readScale(uint8_t samples) {
