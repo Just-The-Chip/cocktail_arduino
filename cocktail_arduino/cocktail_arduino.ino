@@ -14,12 +14,15 @@
 
 // Load cell stuff
 HX711 scale;
-uint8_t scaleDataPin = 6;
-uint8_t scaleClockPin = 7;
+uint8_t scaleDataPin = 12;
+uint8_t scaleClockPin = 13;
 
 uint8_t bellPin = 2;
 
 uint8_t pIO = 43;               // pin of pump
+
+// handPins(3,4,5,6)
+// liftPins(8,9,10,11)
 
 IOtimer *jars[21];
 
