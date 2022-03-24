@@ -17,12 +17,12 @@ HX711 scale;
 uint8_t scaleDataPin = 12;
 uint8_t scaleClockPin = 13;
 
-uint8_t bellPin = 2;
+uint8_t bellPin = 0;
 
 uint8_t pIO = 43;               // pin of pump
 
-// handPins(3,4,5,6)
-// liftPins(8,9,10,11)
+// handPins(4,5,6,7)
+// liftPins(8,9,10,11) 10 = up, 11 = down
 
 IOtimer *jars[21];
 
