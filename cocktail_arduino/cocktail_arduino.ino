@@ -2,6 +2,8 @@
 // NOTE: IO HIGH is actually relay off.  LOW is on.  All relay IO logic is NOT
 
 #include "IOtimer.h"
+#include "BittersArm.h"
+#include "BittersHand.h"
 #include "common.h"
 #include <Adafruit_DotStar.h>
 #include <Wire.h>
@@ -24,6 +26,13 @@ uint8_t pIO = 43;               // pin of pump
 // handPins(4,5,6,7)
 // liftPins(8,9,10,11) 10 = up, 11 = down
 
+uint8_t armBottomLimitPin = 2;
+uint8_t armTopLimitPin = 3;
+
+BittersArm bittersArm(10, 11, 2, 3);
+BittersHand bittersHand(4, 5, 6, 7);
+
+int bittersPosition = 22;
 IOtimer *jars[21];
 
 // Globals:
@@ -65,12 +74,25 @@ void setup() {
     pinMode(pIO, OUTPUT);   // Initializes pump pin
     digitalWrite(pIO, LOW); // Initializes pump pin
 
+    bittersArm.init();
+    bittersHand.init();
+
+    // interrupts to stop the motor when it reaches the top or bottom
+    // this has to be done here because you can only attach a static function
+    attachInterrupt(digitalPinToInterrupt(bittersArm.getBottomLimitInterrupt()), stopArm, RISING);
+    attachInterrupt(digitalPinToInterrupt(bittersArm.getTopLimitInterrupt()), stopArm, RISING);
+
     setupStrip();
     setupJars();
     setupScale();
     Serial.println("Rdy to Dispense!");
 
     status = ready;
+}
+
+// wow I love c++ so much.
+void stopArm() {
+  bittersArm.stop();
 }
 
 void setupStrip() {
@@ -211,57 +233,119 @@ void parseBuf() {
     }
 }
 
+float getStableCurrentWeight(float totalWeight) {
+    unsigned long startTime = millis();
+    float currentWeight = readScale(1);
+
+    // Wait for scale to be stable, then continue
+    do {
+        // delay N milliseconds, while also updating progress and watching out for sabatage
+        unsigned long delayStart = millis();
+        while ((millis() - delayStart) < 500) {
+            currentWeight = readScale(1);
+            progress(currentWeight, totalWeight);
+            if (millis() >= startTime + 10000) break;  // timeout
+            if (currentWeight < -8000.0) break;  // drink removed
+        }
+    } while ((abs(readScale(1) - currentWeight)) > 1000);
+
+    return currentWeight;
+}
+
+// returns final weight reading to use to check if cup was removed.
+float dispenseIngredient(float initialWeight, float targetWeight,float totalWeight, int position) {
+    bool isBitters = position == bittersPosition - 1;
+    float currentWeight = initialWeight;
+    unsigned long startTime = millis();
+
+    if(!isBitters) {
+        jars[position] -> SetValve();
+    }
+
+    // Check scale until target weight is reached or timeout or drink removed
+    while (currentWeight <= targetWeight) {
+        progress(currentWeight, totalWeight);
+
+        if (isBitters) {
+            bittersHand.shake();
+            delay(2000);
+        }
+
+        currentWeight = readScale(1);
+        // Serial.println(currentWeight);
+        if (millis() >= startTime + 40000) break;  // timeout
+        if (currentWeight < -8000.0) break;  // drink removed
+    }
+
+    // Done with ingredient
+    if(!isBitters) {
+        jars[position] -> UnsetValve();
+    }
+
+    return currentWeight;
+}
+
 void doPumpCmd(int numIngredients) {
     status = dispensing;
     progress(0, 0);
     digitalWrite(pIO, true);    // turns on pump
-    scale.tare(5);
-    float targetWeight = readScale(5); // Get current weight
+
+    int bittersListPos = 0; // if this is 0 there is no bitters
     float totalWeight = 0;  // Total drink weight, used for progress animation
 
     // Get total drink weight from buffer
     for (int i = 1; i < (numIngredients + 1); i++) {  // i=1 because index 0 contains the command
+
+        // "jar" position 22 is exclusively for bitters
+        if (parsedBuf[i][0] == bittersPosition) {
+            bittersListPos = i;
+        }
+
         totalWeight += parsedBuf[i][1];
     }
+
+    // begin arm lift now because it takes for-ev-errrrrr
+    // no worries it's non blocking :)
+    if(bittersListPos > 0) {
+        bittersArm.lift();
+    }
+
+    scale.tare(5);
+    float targetWeight = readScale(5); // Get current weight
+    bool cupRemoved = false;
     
     // For each Ingredient
     for (int i = 1; i < (numIngredients + 1); i++) {
-        int position = parsedBuf[i][0] - 1;
-        unsigned long startTime = millis();
-        float currentWeight = readScale(1);
+        if (i == bittersListPos) {
+            continue;
+        }
 
-        // Wait for scale to be stable, then continue
-        do {
-            // delay N milliseconds, while also updating progress and watching out for sabatage
-            unsigned long delayStart = millis();
-            while ((millis() - delayStart) < 500) {
-                currentWeight = readScale(1);
-                progress(currentWeight, totalWeight);
-                if (millis() >= startTime + 10000) break;  // timeout
-                if (currentWeight < -8000.0) break;  // drink removed
-            }
-        } while ((abs(readScale(1) - currentWeight)) > 1000);
+        int position = parsedBuf[i][0] - 1;
+        float currentWeight = getStableCurrentWeight(totalWeight);
 
         // Prepare to dispense ingredient
         totalWeight += currentWeight - targetWeight; // Add overflow to total, for progress animation
         targetWeight = readScale(5); // Get current weight
         targetWeight += parsedBuf[i][1]; // Add weight of this ingredient
         if (i>1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
-        startTime = millis();
-        jars[position] -> SetValve();
 
-        // Check scale until target weight is reached or timeout or drink removed
-        while (currentWeight <= targetWeight) {
-            progress(currentWeight, totalWeight);
-            currentWeight = readScale(1);
-            // Serial.println(currentWeight);
-            if (millis() >= startTime + 40000) break;  // timeout
-            if (currentWeight < -8000.0) break;  // drink removed
-        }
+        float finalIngredientWeight = dispenseIngredient(currentWeight, targetWeight, totalWeight, position);
+        cupRemoved = finalIngredientWeight < -8000.0;
 
-        // Done with ingredient
-        jars[position] -> UnsetValve();
-        if (currentWeight < -8000.0) break; // drink removed
+        if (cupRemoved) break; // drink removed
+    }
+
+    if (bittersListPos > 0 && !cupRemoved) {
+        float currentWeight = getStableCurrentWeight(totalWeight);
+
+        // Prepare to dispense ingredient
+        totalWeight += currentWeight - targetWeight; // Add overflow to total, for progress animation
+        targetWeight = readScale(5); // Get current weight
+        targetWeight += parsedBuf[bittersListPos][1]; // Add weight of this ingredient
+        if (bittersListPos > 1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
+
+        dispenseIngredient(currentWeight, targetWeight, totalWeight, bittersPosition - 1);
+        bittersArm.lower();
     }
 
     digitalWrite(pIO, false); // turn off pump

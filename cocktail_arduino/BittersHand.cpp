@@ -3,13 +3,12 @@
 #include <Stepper.h>
 #include "BittersHand.h"
 
-BittersHand::BittersHand(uint8_t pin1, uint8_t pin2, uint8_t pin3, uint8_t pin4) {
-    pin1 = pin1;
-    pin2 = pin2;
-    pin3 = pin3;
-    pin4 = pin4;
-
-    stepper = new Stepper(stepsPerRevolution, pin1, pin2, pin3, pin4);
+BittersHand::BittersHand(uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
+  :stepper(stepsPerRevolution, p1, p2, p3, p4) {
+    pin1 = p1;
+    pin2 = p2;
+    pin3 = p3;
+    pin4 = p4;
 }
 
 void BittersHand::init() {
@@ -22,7 +21,7 @@ void BittersHand::shake() {
     step(shakeRotation * -1);
     
     // hold power on for a short time to stop momentum 
-    sleep(holdTime);
+    delay(holdTime);
 
     powerOff();
 }

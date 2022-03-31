@@ -18,10 +18,6 @@ void BittersArm::init() {
 
     // ensure pins are in the stopped state
     stop();
-
-    // interrupts to stop the motor when it reaches the top or bottom
-    attachInterrupt(digitalPinToInterrupt(bottomLimitPin), stop, RISING);
-    attachInterrupt(digitalPinToInterrupt(topLimitPin), stop, RISING);
 }
 
 void BittersArm::lift() {
@@ -45,4 +41,12 @@ bool BittersArm::isAtBottom() {
 
 bool BittersArm::isAtTop() {
     return digitalRead(topLimitPin);
+}
+
+uint8_t BittersArm::getBottomLimitInterrupt() {
+  return digitalPinToInterrupt(bottomLimitPin);
+}
+
+uint8_t BittersArm::getTopLimitInterrupt() {
+  return digitalPinToInterrupt(topLimitPin);
 }

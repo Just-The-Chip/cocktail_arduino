@@ -22,4 +22,7 @@ class BittersArm {
 
     bool isAtTop();
     bool isAtBottom();
+
+    uint8_t getBottomLimitInterrupt();
+    uint8_t getTopLimitInterrupt();
 };
