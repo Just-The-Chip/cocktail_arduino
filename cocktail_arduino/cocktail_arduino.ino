@@ -281,6 +281,9 @@ float dispenseIngredient(float initialWeight, float targetWeight,float totalWeig
         progress(currentWeight, totalWeight);
 
         if (isBitters) {
+            while(!bittersArm.isAtTop()) {
+                delay(50);
+            }
             bittersHand.shake();
             delay(2000);
         }
