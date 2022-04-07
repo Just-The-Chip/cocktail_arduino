@@ -186,9 +186,6 @@ void progress(float currentWeight, float totalWeight, bool changeColor = false);
 
 // LOOP-----------------------------------------------------------------------------------
 void loop() {
-    Serial.print("bottom? ");
-    Serial.println(bittersArm.isAtBottom());
-
     // Check buffer for commands, and execute if there are any.
     if (checkBuf) {
         checkBuf = false;
@@ -281,8 +278,8 @@ float dispenseIngredient(float initialWeight, float targetWeight,float totalWeig
         progress(currentWeight, totalWeight);
 
         if (isBitters) {
-            while(!bittersArm.isAtTop()) {
-                delay(50);
+            while (!bittersArm.isAtTop()) {
+                delay(100);
             }
             bittersHand.shake();
             delay(2000);
