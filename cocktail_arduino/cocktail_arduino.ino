@@ -19,7 +19,7 @@ HX711 scale;
 uint8_t scaleDataPin = 12;
 uint8_t scaleClockPin = 13;
 
-uint8_t bellPin = 0;
+uint8_t bellPin = A0;
 
 uint8_t pIO = 43;               // pin of pump
 
