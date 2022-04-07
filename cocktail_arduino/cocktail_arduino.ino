@@ -90,8 +90,8 @@ void setupBittersDispenser() {
 
     // interrupts to stop the motor when it reaches the top or bottom
     // this has to be done here because you can only attach a static function
-    attachInterrupt(digitalPinToInterrupt(bittersArm.getBottomLimitInterrupt()), stopArm, RISING);
-    attachInterrupt(digitalPinToInterrupt(bittersArm.getTopLimitInterrupt()), stopArm, RISING);
+    attachInterrupt(digitalPinToInterrupt(bittersArm.getBottomLimitInterrupt()), stopArm, FALLING);
+    attachInterrupt(digitalPinToInterrupt(bittersArm.getTopLimitInterrupt()), stopArm, FALLING);
 
     //lower arm if it's not lowered already
     if(!bittersArm.isAtBottom()) {

@@ -13,8 +13,8 @@ void BittersArm::init() {
     pinMode(pinC, OUTPUT);
     pinMode(pinD, OUTPUT);
 
-    pinMode(bottomLimitPin, INPUT);
-    pinMode(topLimitPin, INPUT);
+    pinMode(bottomLimitPin, INPUT_PULLUP);
+    pinMode(topLimitPin, INPUT_PULLUP);
 
     // ensure pins are in the stopped state
     stop();
@@ -36,11 +36,11 @@ void BittersArm::stop() {
 }
 
 bool BittersArm::isAtBottom() {
-    return digitalRead(bottomLimitPin);
+    return !digitalRead(bottomLimitPin);
 }
 
 bool BittersArm::isAtTop() {
-    return digitalRead(topLimitPin);
+    return !digitalRead(topLimitPin);
 }
 
 uint8_t BittersArm::getBottomLimitInterrupt() {
