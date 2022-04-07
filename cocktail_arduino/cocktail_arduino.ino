@@ -26,10 +26,10 @@ uint8_t pIO = 43;               // pin of pump
 // handPins(4,5,6,7)
 // liftPins(8,9,10,11) 10 = up, 11 = down
 
-uint8_t armBottomLimitPin = 2;
-uint8_t armTopLimitPin = 3;
+// uint8_t armBottomLimitPin = 3;
+// uint8_t armTopLimitPin = 2;
 
-BittersArm bittersArm(10, 11, 2, 3);
+BittersArm bittersArm(10, 11, 3, 2);
 BittersHand bittersHand(4, 5, 6, 7);
 
 int bittersPosition = 22;
@@ -90,8 +90,8 @@ void setupBittersDispenser() {
 
     // interrupts to stop the motor when it reaches the top or bottom
     // this has to be done here because you can only attach a static function
-    attachInterrupt(digitalPinToInterrupt(bittersArm.getBottomLimitInterrupt()), stopArm, FALLING);
-    attachInterrupt(digitalPinToInterrupt(bittersArm.getTopLimitInterrupt()), stopArm, FALLING);
+    attachInterrupt(bittersArm.getBottomLimitInterrupt(), stopArm, FALLING);
+    attachInterrupt(bittersArm.getTopLimitInterrupt(), stopArm, FALLING);
 
     //lower arm if it's not lowered already
     if(!bittersArm.isAtBottom()) {
@@ -101,6 +101,8 @@ void setupBittersDispenser() {
 
 // wow I love c++ so much.
 void stopArm() {
+  // digitalWrite(bellPin, HIGH); 
+
   bittersArm.stop();
 }
 
@@ -184,6 +186,9 @@ void progress(float currentWeight, float totalWeight, bool changeColor = false);
 
 // LOOP-----------------------------------------------------------------------------------
 void loop() {
+    Serial.print("bottom? ");
+    Serial.println(bittersArm.isAtBottom());
+
     // Check buffer for commands, and execute if there are any.
     if (checkBuf) {
         checkBuf = false;
