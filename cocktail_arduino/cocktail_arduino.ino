@@ -74,6 +74,17 @@ void setup() {
     pinMode(pIO, OUTPUT);   // Initializes pump pin
     digitalWrite(pIO, LOW); // Initializes pump pin
 
+    setupBittersDispenser();
+
+    setupStrip();
+    setupJars();
+    setupScale();
+    Serial.println("Rdy to Dispense!");
+
+    status = ready;
+}
+
+void setupBittersDispenser() {
     bittersArm.init();
     bittersHand.init();
 
@@ -82,12 +93,10 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(bittersArm.getBottomLimitInterrupt()), stopArm, RISING);
     attachInterrupt(digitalPinToInterrupt(bittersArm.getTopLimitInterrupt()), stopArm, RISING);
 
-    setupStrip();
-    setupJars();
-    setupScale();
-    Serial.println("Rdy to Dispense!");
-
-    status = ready;
+    //lower arm if it's not lowered already
+    if(!bittersArm.isAtBottom()) {
+      bittersArm.lower();
+    }
 }
 
 // wow I love c++ so much.
