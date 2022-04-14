@@ -94,9 +94,7 @@ void setupBittersDispenser() {
     attachInterrupt(bittersArm.getTopLimitInterrupt(), stopArm, FALLING);
 
     //lower arm if it's not lowered already
-    if(!bittersArm.isAtBottom()) {
-      bittersArm.lower();
-    }
+    bittersArm.lower();
 }
 
 // wow I love c++ so much.
@@ -279,10 +277,15 @@ float dispenseIngredient(float initialWeight, float targetWeight,float totalWeig
 
         if (isBitters) {
             while (!bittersArm.isAtTop()) {
+                if (millis() >= startTime + 40000) break;  // timeout
                 delay(100);
             }
-            bittersHand.shake();
-            delay(2000);
+
+            // ensure the arm didn't time out before shaking
+            if(bittersArm.isAtTop()) {
+                bittersHand.shake();
+                delay(2000);
+            }
         }
 
         currentWeight = readScale(1);

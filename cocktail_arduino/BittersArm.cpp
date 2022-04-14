@@ -9,6 +9,7 @@ BittersArm::BittersArm(uint8_t upPin, uint8_t downPin, uint8_t bottomPin, uint8_
     topLimitPin = topPin;
 }
 
+// NOTE: This function does NOT setup the stop inturrupts. That MUST be done outside of this class. 
 void BittersArm::init() {
     pinMode(pinC, OUTPUT);
     pinMode(pinD, OUTPUT);
@@ -21,11 +22,15 @@ void BittersArm::init() {
 }
 
 void BittersArm::lift() {
+    if (isAtTop()) return;
+
     digitalWrite(pinC, HIGH);
     digitalWrite(pinD, LOW);
 }
 
 void BittersArm::lower() {
+    if (isAtBottom()) return;
+
     digitalWrite(pinC, LOW);
     digitalWrite(pinD, HIGH);
 }
