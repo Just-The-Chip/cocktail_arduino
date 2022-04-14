@@ -30,7 +30,7 @@ uint8_t pIO = 43;               // pin of pump
 // uint8_t armTopLimitPin = 2;
 
 BittersArm bittersArm(10, 11, 3, 2);
-BittersHand bittersHand(4, 5, 6, 7);
+BittersHand bittersHand(7, 6, 5, 4); //4, 5, 6, 7);
 
 int bittersPosition = 22;
 IOtimer *jars[21];
@@ -362,6 +362,8 @@ void doPumpCmd(int numIngredients) {
         if (bittersListPos > 1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
 
         dispenseIngredient(currentWeight, targetWeight, totalWeight, bittersPosition - 1);
+        Serial.print("is at bottom? ");
+        Serial.println(bittersArm.isAtBottom());
         bittersArm.lower();
     }
 
