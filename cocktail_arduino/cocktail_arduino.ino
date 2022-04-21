@@ -289,9 +289,10 @@ float dispenseIngredient(float initialWeight, float targetWeight,float totalWeig
 
         if (isBitters) {
             while (!bittersArm.isAtTop()) {
+                currentWeight = readScale(1);
+                // Serial.println(currentWeight);
                 if (millis() >= startTime + 40000) break;  // timeout
-                delay(100);
-
+                if (currentWeight < -8000.0) break;  // drink removed
             }
 
             // ensure the arm didn't time out before shaking
@@ -365,18 +366,21 @@ void doPumpCmd(int numIngredients) {
         if (cupRemoved) break; // drink removed
     }
 
-    if (bittersListPos > 0 && !cupRemoved) {
-        float currentWeight = getStableCurrentWeight(totalWeight);
+    if (bittersListPos > 0) {
+        if (!cupRemoved) {
+            float currentWeight = getStableCurrentWeight(totalWeight);
 
-        // Prepare to dispense ingredient
-        totalWeight += currentWeight - targetWeight; // Add overflow to total, for progress animation
-        targetWeight = readScale(5); // Get current weight
-        targetWeight += parsedBuf[bittersListPos][1]; // Add weight of this ingredient
-        if (bittersListPos > 1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
+            // Prepare to dispense ingredient
+            totalWeight += currentWeight - targetWeight; // Add overflow to total, for progress animation
+            targetWeight = readScale(5); // Get current weight
+            targetWeight += parsedBuf[bittersListPos][1]; // Add weight of this ingredient
+            if (bittersListPos > 1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
 
-        dispenseIngredient(currentWeight, targetWeight, totalWeight, bittersPosition - 1);
-        Serial.print("is at bottom? ");
-        Serial.println(bittersArm.isAtBottom());
+            dispenseIngredient(currentWeight, targetWeight, totalWeight, bittersPosition - 1);
+            // Serial.print("is at bottom? ");
+            // Serial.println(bittersArm.isAtBottom());
+        }
+        
         bittersArm.lower();
     }
 
