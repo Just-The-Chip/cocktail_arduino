@@ -99,9 +99,13 @@ void setupBittersDispenser() {
 
 // wow I love c++ so much.
 void stopArm() {
-  // digitalWrite(bellPin, HIGH); 
+  //digitalWrite(bellPin, HIGH);
+  // This is hopefully temporary until we can get the right part to stablize the switch reading
+  delayMicroseconds(1000);
 
-  bittersArm.stop();
+  if(bittersArm.isAtTop() || bittersArm.isAtBottom()) {
+    bittersArm.stop();
+  }
 }
 
 void setupStrip() {
@@ -248,16 +252,24 @@ float getStableCurrentWeight(float totalWeight) {
 
     // Wait for scale to be stable, then continue
     do {
+        bool braking = false;
         // delay N milliseconds, while also updating progress and watching out for sabatage
         unsigned long delayStart = millis();
-        while ((millis() - delayStart) < 500) {
+        while ((millis() - delayStart) < 1500) {
             currentWeight = readScale(1);
             progress(currentWeight, totalWeight);
-            if (millis() >= startTime + 10000) break;  // timeout
-            if (currentWeight < -8000.0) break;  // drink removed
+            if (millis() >= startTime + 10000) {  // timeout
+              break;
+              braking = true;
+            }
+            if (currentWeight < -8000.0) {  // drink removed
+              break;
+              braking = true;
+            }
         }
-    } while ((abs(readScale(1) - currentWeight)) > 1000);
-
+        if (braking) break;
+    } while ((abs(readScale(1) - currentWeight)) > 500);
+    Serial.println("stable");
     return currentWeight;
 }
 
@@ -279,6 +291,7 @@ float dispenseIngredient(float initialWeight, float targetWeight,float totalWeig
             while (!bittersArm.isAtTop()) {
                 if (millis() >= startTime + 40000) break;  // timeout
                 delay(100);
+
             }
 
             // ensure the arm didn't time out before shaking
