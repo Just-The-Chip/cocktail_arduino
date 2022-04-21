@@ -268,7 +268,7 @@ float getStableCurrentWeight(float totalWeight) {
             }
         }
         if (braking) break;
-    } while ((abs(readScale(1) - currentWeight)) > 500);
+    } while ((abs(readScale(1) - currentWeight)) > 300);
     Serial.println("stable");
     return currentWeight;
 }
