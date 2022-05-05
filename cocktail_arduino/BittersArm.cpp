@@ -14,8 +14,8 @@ void BittersArm::init() {
     pinMode(pinC, OUTPUT);
     pinMode(pinD, OUTPUT);
 
-    pinMode(bottomLimitPin, INPUT_PULLUP);
-    pinMode(topLimitPin, INPUT_PULLUP);
+    pinMode(bottomLimitPin, INPUT);
+    pinMode(topLimitPin, INPUT);
 
     // ensure pins are in the stopped state
     stop();

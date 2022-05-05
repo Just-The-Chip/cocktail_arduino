@@ -99,13 +99,7 @@ void setupBittersDispenser() {
 
 // wow I love c++ so much.
 void stopArm() {
-  //digitalWrite(bellPin, HIGH);
-  // This is hopefully temporary until we can get the right part to stablize the switch reading
-  delayMicroseconds(20000);
-
-  if(bittersArm.isAtTop() || bittersArm.isAtBottom()) {
-    bittersArm.stop();
-  }
+  bittersArm.stop();
 }
 
 void setupStrip() {
