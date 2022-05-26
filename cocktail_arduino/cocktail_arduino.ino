@@ -43,6 +43,8 @@ unsigned long parsedBuf[21][2]; //  stores parsed command data, 21 rows by 2 col
 bool checkBuf = false;
 int eepromAddress = 0;
 
+float mgPerDash = 750;
+
 enum command: char {
     pump = 'p',
     show = 's'
@@ -269,42 +271,53 @@ float getStableCurrentWeight(float totalWeight) {
 
 // returns final weight reading to use to check if cup was removed.
 float dispenseIngredient(float initialWeight, float targetWeight,float totalWeight, int position) {
-    bool isBitters = position == bittersPosition - 1;
     float currentWeight = initialWeight;
     unsigned long startTime = millis();
 
-    if(!isBitters) {
-        jars[position] -> SetValve();
-    }
+    // bitters arm is jar 22 (i.e. position 21)
+    if (position >= 21) return currentWeight;
+
+    jars[position] -> SetValve();
 
     // Check scale until target weight is reached or timeout or drink removed
     while (currentWeight <= targetWeight) {
         progress(currentWeight, totalWeight);
 
-        if (isBitters) {
-            while (!bittersArm.isAtTop()) {
-                currentWeight = readScale(1);
-                // Serial.println(currentWeight);
-                if (millis() >= startTime + 40000) break;  // timeout
-                if (currentWeight < -8000.0) break;  // drink removed
-            }
-
-            // ensure the arm didn't time out before shaking
-            if(bittersArm.isAtTop()) {
-                bittersHand.shake();
-                delay(2000);
-            }
-        }
-
         currentWeight = readScale(1);
-        // Serial.println(currentWeight);
         if (millis() >= startTime + 40000) break;  // timeout
         if (currentWeight < -8000.0) break;  // drink removed
     }
 
     // Done with ingredient
-    if(!isBitters) {
-        jars[position] -> UnsetValve();
+    jars[position] -> UnsetValve();
+
+    return currentWeight;
+}
+
+float dispenseBitters(float initialWeight, float totalWeight, int targetDashCount) {
+    float currentWeight = initialWeight;
+    unsigned long startTime = millis();
+
+    for (int dashCount = 0; dashCount < targetDashCount; dashCount++) {
+        progress(currentWeight, totalWeight);
+
+        // wait for arm to get to the top if it's not there already
+        while (!bittersArm.isAtTop()) {
+            currentWeight = readScale(1);
+            if (millis() >= startTime + 40000) break;  // timeout
+            if (currentWeight < -8000.0) break;  // drink removed
+        }
+
+        // ensure the arm didn't time out before shaking
+        if(bittersArm.isAtTop()) {
+            bittersHand.shake();
+            delay(1000);
+        }
+
+        // we still read the weight to check for cup removal
+        currentWeight = readScale(1);
+        if (millis() >= startTime + 40000) break;  // timeout
+        if (currentWeight < -8000.0) break;  // drink removed
     }
 
     return currentWeight;
@@ -366,13 +379,16 @@ void doPumpCmd(int numIngredients) {
 
             // Prepare to dispense ingredient
             totalWeight += currentWeight - targetWeight; // Add overflow to total, for progress animation
-            targetWeight = readScale(5); // Get current weight
-            targetWeight += parsedBuf[bittersListPos][1]; // Add weight of this ingredient
+
+            Serial.println(parsedBuf[bittersListPos][1]);
+            Serial.println(parsedBuf[bittersListPos][1] / mgPerDash);
+
+            int targetDashCount = ceil(parsedBuf[bittersListPos][1] / mgPerDash);
+            Serial.println(targetDashCount);
+
             if (bittersListPos > 1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
 
-            dispenseIngredient(currentWeight, targetWeight, totalWeight, bittersPosition - 1);
-            // Serial.print("is at bottom? ");
-            // Serial.println(bittersArm.isAtBottom());
+            dispenseBitters(currentWeight, totalWeight, targetDashCount);;
         }
         
         bittersArm.lower();
