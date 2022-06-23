@@ -305,8 +305,11 @@ float dispenseBitters(float initialWeight, float totalWeight, int targetDashCoun
         while (!bittersArm.isAtTop()) {
             currentWeight = readScale(1);
             if (millis() >= startTime + 40000) break;  // timeout
-            if (currentWeight < -8000.0) break;  // drink removed
+            if (currentWeight < (initialWeight - 8000.0)) break;  // drink removed
         }
+        
+        currentWeight = readScale(1);
+        if (currentWeight < (initialWeight - 8000.0)) break;    // drink removed
 
         // ensure the arm didn't time out before shaking
         if(bittersArm.isAtTop()) {
@@ -314,10 +317,7 @@ float dispenseBitters(float initialWeight, float totalWeight, int targetDashCoun
             delay(1000);
         }
 
-        // we still read the weight to check for cup removal
-        currentWeight = readScale(1);
         if (millis() >= startTime + 40000) break;  // timeout
-        if (currentWeight < -8000.0) break;  // drink removed
     }
 
     return currentWeight;
