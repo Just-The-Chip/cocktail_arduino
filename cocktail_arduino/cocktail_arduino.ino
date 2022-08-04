@@ -318,17 +318,17 @@ statusCode dispenseBitters(float initialWeight, float totalWeight, int targetDas
             weightStatus = getWeightStatus(currentWeight, startTime + 40000);
             if (weightStatus != ready) break;
         }
+        
+        // we still read the weight to check for cup removal
+        currentWeight = readScale(1);
+        weightStatus = getWeightStatus(currentWeight, startTime + 40000);
+        if (weightStatus != ready) break;
 
         // ensure the arm didn't time out before shaking
         if(bittersArm.isAtTop()) {
             bittersHand.shake();
             delay(1000);
         }
-
-        // we still read the weight to check for cup removal
-        currentWeight = readScale(1);
-        weightStatus = getWeightStatus(currentWeight, startTime + 40000);
-        if (weightStatus != ready) break;
     }
 
     return weightStatus;
