@@ -55,7 +55,9 @@ enum statusCode: char{
     nack = 0x15, 
     reading = 0x05,
     dispensing = 0x07,
-    ready = 0x03
+    ready = 0x03,
+    cancel = 0x18,
+    removed = 0x1B
 };
 
 volatile statusCode status;
@@ -242,61 +244,70 @@ void parseBuf() {
     }
 }
 
+statusCode getWeightStatus(float currentWeight, unsigned long maxTime) {
+    if (currentWeight < -8000.0) return removed;
+    if (millis()  >= maxTime) return cancel;
+
+    return ready;
+}
+
 float getStableCurrentWeight(float totalWeight) {
     unsigned long startTime = millis();
     float currentWeight = readScale(1);
 
     // Wait for scale to be stable, then continue
     do {
-        bool braking = false;
         // delay N milliseconds, while also updating progress and watching out for sabatage
         unsigned long delayStart = millis();
         while ((millis() - delayStart) < 1500) {
             currentWeight = readScale(1);
             progress(currentWeight, totalWeight);
-            if (millis() >= startTime + 10000) {  // timeout
-              break;
-              braking = true;
-            }
-            if (currentWeight < -8000.0) {  // drink removed
-              break;
-              braking = true;
+
+            statusCode weightStatus = getWeightStatus(currentWeight, startTime + 10000);
+
+            if (weightStatus != ready) {
+                Serial.print("stability check status: ");
+                Serial.println(weightStatus);
+                return currentWeight;
             }
         }
-        if (braking) break;
     } while ((abs(readScale(1) - currentWeight)) > 300);
     Serial.println("stable");
     return currentWeight;
 }
 
 // returns final weight reading to use to check if cup was removed.
-float dispenseIngredient(float initialWeight, float targetWeight,float totalWeight, int position) {
+statusCode dispenseIngredient(float initialWeight, float targetWeight,float totalWeight, int position) {
     float currentWeight = initialWeight;
     unsigned long startTime = millis();
 
     // bitters arm is jar 22 (i.e. position 21)
-    if (position >= 21) return currentWeight;
+    if (position >= 21) return ready;
 
     jars[position] -> SetValve();
+
+    statusCode weightStatus = ready;
 
     // Check scale until target weight is reached or timeout or drink removed
     while (currentWeight <= targetWeight) {
         progress(currentWeight, totalWeight);
 
         currentWeight = readScale(1);
-        if (millis() >= startTime + 40000) break;  // timeout
-        if (currentWeight < -8000.0) break;  // drink removed
+        weightStatus = getWeightStatus(currentWeight, startTime + 40000);
+        if (weightStatus != ready) break;
     }
 
     // Done with ingredient
     jars[position] -> UnsetValve();
 
-    return currentWeight;
+    return weightStatus;
 }
 
-float dispenseBitters(float initialWeight, float totalWeight, int targetDashCount) {
+statusCode dispenseBitters(float initialWeight, float totalWeight, int targetDashCount) {
     float currentWeight = initialWeight;
     unsigned long startTime = millis();
+
+    statusCode weightStatus = ready;
 
     for (int dashCount = 0; dashCount < targetDashCount; dashCount++) {
         progress(currentWeight, totalWeight);
@@ -304,8 +315,8 @@ float dispenseBitters(float initialWeight, float totalWeight, int targetDashCoun
         // wait for arm to get to the top if it's not there already
         while (!bittersArm.isAtTop()) {
             currentWeight = readScale(1);
-            if (millis() >= startTime + 40000) break;  // timeout
-            if (currentWeight < -8000.0) break;  // drink removed
+            weightStatus = getWeightStatus(currentWeight, startTime + 40000);
+            if (weightStatus != ready) break;
         }
 
         // ensure the arm didn't time out before shaking
@@ -316,11 +327,11 @@ float dispenseBitters(float initialWeight, float totalWeight, int targetDashCoun
 
         // we still read the weight to check for cup removal
         currentWeight = readScale(1);
-        if (millis() >= startTime + 40000) break;  // timeout
-        if (currentWeight < -8000.0) break;  // drink removed
+        weightStatus = getWeightStatus(currentWeight, startTime + 40000);
+        if (weightStatus != ready) break;
     }
 
-    return currentWeight;
+    return weightStatus;
 }
 
 void doPumpCmd(int numIngredients) {
@@ -350,7 +361,7 @@ void doPumpCmd(int numIngredients) {
 
     scale.tare(5);
     float targetWeight = readScale(5); // Get current weight
-    bool cupRemoved = false;
+    statusCode ingredientStatus = ready;
     
     // For each Ingredient
     for (int i = 1; i < (numIngredients + 1); i++) {
@@ -367,14 +378,13 @@ void doPumpCmd(int numIngredients) {
         targetWeight += parsedBuf[i][1]; // Add weight of this ingredient
         if (i>1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
 
-        float finalIngredientWeight = dispenseIngredient(currentWeight, targetWeight, totalWeight, position);
-        cupRemoved = finalIngredientWeight < -8000.0;
+        ingredientStatus = dispenseIngredient(currentWeight, targetWeight, totalWeight, position);
 
-        if (cupRemoved) break; // drink removed
+        if (ingredientStatus != ready) break; // drink removed
     }
 
     if (bittersListPos > 0) {
-        if (!cupRemoved) {
+        if (ingredientStatus == ready) {
             float currentWeight = getStableCurrentWeight(totalWeight);
 
             // Prepare to dispense ingredient
@@ -388,7 +398,7 @@ void doPumpCmd(int numIngredients) {
 
             if (bittersListPos > 1) progress(currentWeight, totalWeight, true);   // change animation color if not first ingredient, 1 is first ingredient
 
-            dispenseBitters(currentWeight, totalWeight, targetDashCount);;
+            ingredientStatus = dispenseBitters(currentWeight, totalWeight, targetDashCount);;
         }
         
         bittersArm.lower();
@@ -396,7 +406,7 @@ void doPumpCmd(int numIngredients) {
 
     digitalWrite(pIO, false); // turn off pump
     ringBell();
-    status = ready;
+    status = ingredientStatus;
 }
 
 // Returns true if CRC calculation matches recieved CRC
